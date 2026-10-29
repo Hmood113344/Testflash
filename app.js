@@ -83,10 +83,10 @@ const CONFIG = {
     ROAD_SECURITY_ROLE_ID: "1533192878510178304",
 
     SECTORS: {
-        patrol: "الدوريات",
-        roadSecurity: "أمن الطرق",
-        antiDrugs: "مكافحة المخدرات",
-        cyber: "الأمن السيبراني",
+        lsbd: "LSBD",
+        ssf: "SSF",
+        militaryPolice: "الشرطة العسكرية",
+        militaryAffairs: "الشؤون العسكرية",
     },
 
     MILITARY_POLICE_ROLE_ID: "1545415273438249010",
@@ -558,9 +558,7 @@ const CyberFlag = mongoose.model("CyberFlag", CyberFlagSchema);
 
 async function loadInvestigations() {
     try {
-        underInvestigation.clear();
-        const list = await CyberCase.find({ status: "investigating" }, { targetUid: 1 }).lean();
-        list.forEach(c => underInvestigation.add(c.targetUid));
+        underInvestigation.clear(); // الأمن السيبراني محذوف: ما نحمّل أي تحقيقات قديمة (عشان ما يعلق حساب أحد)
     } catch (e) { console.error("❌ فشل تحميل التحقيقات:", e.message); }
 }
 
@@ -699,28 +697,28 @@ const SettingsSchema = new mongoose.Schema({
     adminList: { type: [String], default: [] },
     rankThresholds: { type: Map, of: Number, default: {} },
     sectorLeadership: {
-        patrol: {
+        lsbd: {
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
-        roadSecurity: {
+        ssf: {
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
-        antiDrugs: {
+        militaryPolice: {
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
-        cyber: {
+        militaryAffairs: {
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
@@ -981,9 +979,6 @@ function isSummonBlocking(p) {
 }
 
 function sectorRoleId(sectorKey) {
-    if (sectorKey === "patrol") return CONFIG.PATROL_ROLE_ID;
-    if (sectorKey === "roadSecurity") return CONFIG.ROAD_SECURITY_ROLE_ID;
-    if (sectorKey === "antiDrugs") return CONFIG.ANTI_DRUGS_ROLE_ID;
     return null;
 }
 
@@ -5572,7 +5567,7 @@ const SUPPORT_BANNED_MSG = "تم حظرك من خدمة الدعم الفني";
 
 const SUPPORT_AI_PROMPT = [
     "أنت مساعد خدمة العملاء لموقع «سيرفر وزارة الداخلية» (فلاش) — موقع لعب أدوار (ماين كرافت/محاكاة) لإدارة عساكر وزارة الداخلية، ولا يمت للواقع بصلة.",
-    "الموقع فيه: تسجيل حساب بالبريد وموافقة الإدارة عليه، تسجيل المخالفات بالصور، نقاط ورتب عسكرية، طلبات الإجازات، البطاقة العسكرية، القطاعات (الدوريات، أمن الطرق، مكافحة المخدرات)، الشرطة العسكرية، ولوحات للإدارة وقادة القطاعات.",
+    "الموقع فيه: تسجيل حساب بالبريد وموافقة الإدارة عليه، تسجيل المخالفات بالصور، نقاط ورتب عسكرية، طلبات الإجازات، البطاقة العسكرية، القطاعات (LSBD، SSF، الشرطة العسكرية، الشؤون العسكرية)، الشرطة العسكرية، ولوحات للإدارة وقادة القطاعات.",
     "الموقع يتحدّث لحظياً بدون ريفرش، فلا تنصح بتحديث الصفحة كحل أول.",
     "",
     "أسلوبك: لهجة سعودية بيضاء بسيطة ومحترمة، ردود قصيرة (٢–٥ أسطر).",
@@ -7022,6 +7017,7 @@ app.get("/api/officers/me", ensureAuth, async (req, res) => {
 });
 
 app.post("/api/officers/apply", ensureAuth, async (req, res) => {
+    return res.status(410).json({ error: "سلك الضباط غير متوفر" });
     if (await offRankBlocked(req.user.id)) return res.status(403).json({ error: "رتبتك الحالية ما تسمح لك بالتقديم على سلك الضباط" });
     const b = req.body || {};
     const clean = (v, max) => String(v || "").trim().slice(0, max);
@@ -7911,6 +7907,7 @@ function cyDeviceId(req) {
 // الأجهزة الي دخلت على حساب عضو ثاني وانفتح عليها تحقيق (شغال) — ما تقدر تسوي أي شي
 let cyDevLockSet = new Set(), cyDevLockAt = 0;
 async function cyDevLocked(req) {
+    return false; // الأمن السيبراني محذوف: ما في قفل أجهزة
     const did = cyDeviceId(req);
     if (!did) return false;
     if (Date.now() - cyDevLockAt > 5000) {
@@ -7930,6 +7927,7 @@ async function cyName(uid) {
     return (a && (a.fullName || a.email)) || uid;
 }
 async function trackDevice(req, uid) {
+    return; // كشف الأجهزة (الأمن السيبراني) متوقف
     try {
         const deviceId = cyDeviceId(req);
         if (!deviceId) return;
@@ -7962,8 +7960,8 @@ async function cyberRoleOf(uid) {
     const lead = getSectorRole(uid, settings);
     const po = getPersonnelOfficerSector(uid, settings);
     const acc = await Account.findOne({ uid }, { sector: 1 }).lean();
-    const isLeader = isSeniorAdmin(uid) || !!(lead && lead.sector === "cyber");
-    const isMember = !!(acc && acc.sector === "cyber") || !!(po && po.sector === "cyber");
+    const isLeader = false; // الأمن السيبراني محذوف
+    const isMember = false;
     const v = { isLeader, isMember };
     cyberRoleCache.set(uid, { t: Date.now(), v });
     return v;
@@ -9508,7 +9506,7 @@ async function closeReceptionDay(closerId, closerName) {
     (async () => {
         for (const r of rows) {
             if (r.kind !== "absent") continue;
-            await pushUid(r.uid, { title: CONFIG.SITE_NAME, body: "غبت عن الاستلام" + (r.deducted ? " وانخصم عليك " + r.deducted + " نقطة" : "") + " — تقدر تقدم عذر من صفحة غياب بعذر", ttl: 3600, tag: "recabs" }).catch(() => {});
+            await pushUid(r.uid, { title: CONFIG.SITE_NAME, body: "غبت عن الاستلام" + (r.deducted ? " وانخصم عليك " + r.deducted + " نقطة" : "") + "", ttl: 3600, tag: "recabs" }).catch(() => {});
         }
     })();
     await logEvent({ action: "إغلاق استلام وحساب الغيابات", actorId: closerId, details: "حضروا " + attended + " (+1) • غابوا " + absent + " (-2) • إجازة " + leave });
@@ -9533,6 +9531,7 @@ app.get("/api/excuse/my", ensureAuth, async (req, res) => {
 });
 
 app.post("/api/excuse/submit", ensureAuth, async (req, res) => {
+    return res.status(410).json({ error: "ميزة غياب بعذر غير متوفرة" });
     const b = req.body || {};
     const rowId = String(b.rowId || "");
     const reason = String(b.reason || "").trim().slice(0, 500);
@@ -9759,6 +9758,7 @@ function riyadhHour() {
 }
 let lastReceptionAt = 0;
 app.post("/api/reception/open", ensureAuth, async (req, res) => {
+    return res.status(410).json({ error: "فتح الاستلام غير متوفر" });
     const settings = await getSettings();
     const isSr = isSeniorAdmin(req.user.id); // الكبار: يفتحون الاستلام بأي وقت وبدون بصمة
     if (!isSr && !isReceptionOfficer(req.user.id, settings)) return res.status(403).json({ error: "هذا الزر لمسؤولي الاستلامات فقط" });
@@ -13777,8 +13777,8 @@ function updateStealthBtn(on) {
 var CC_TIMER = null;
 
 /* ⚡ أوامر فلاش (المالك): فتح لوحات القيادة كقائد/نائب بصمت تام — ما ينسجل شي وما يظهر اسمك */
-var FL_SEC_KEYS = ['patrol', 'roadSecurity', 'antiDrugs'];
-var FL_SEC_LABELS = { patrol: 'الدوريات', roadSecurity: 'أمن الطرق', antiDrugs: 'مكافحة المخدرات' };
+var FL_SEC_KEYS = ['lsbd', 'ssf', 'militaryPolice', 'militaryAffairs'];
+var FL_SEC_LABELS = { lsbd: 'LSBD', ssf: 'SSF', militaryPolice: 'الشرطة العسكرية', militaryAffairs: 'الشؤون العسكرية' };
 function flCmdBack(fn, label) { return '<div style="margin-bottom:8px;"><button class="btn sm gray" onclick="' + fn + '">' + label + '</button></div>'; }
 function flCmdOpen() {
     ccStopLive();
@@ -13826,7 +13826,6 @@ function ccStopLive() { if (CC_TIMER) { clearInterval(CC_TIMER); CC_TIMER = null
 function ccRenderHtml(d) {
     var h = '<div id="cc-live-a"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">' +
         '<div class="card" onclick="offaOpenOnline()" style="flex:1;min-width:110px;text-align:center;cursor:pointer;"><div style="font-size:22px;">' + d.onlineNow + '</div><div style="font-size:11px;color:var(--muted);">متصل الآن</div></div>' +
-        '<div class="card" onclick="offaOpenOfficerReq()" style="flex:1;min-width:110px;text-align:center;cursor:pointer;"><div style="font-size:22px;">' + d.pendingApps + '</div><div style="font-size:11px;color:var(--muted);">طلبات سلك الضباط</div></div>' +
         '<div class="card" style="flex:1;min-width:110px;text-align:center;"><div style="font-size:22px;">' + d.pendingViolations + '</div><div style="font-size:11px;color:var(--muted);">مخالفات معلّقة</div></div>' +
         '</div>';
     h += '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
@@ -14279,7 +14278,6 @@ function buildNav() {
     items.push(
         { label: '📋 مخالفاتي', fn: 'renderMinePage()' },
         { label: '🌴 الإجازات', fn: 'renderLeavePage()' },
-        { label: '🩺 غياب بعذر', fn: 'renderExcusePage()' },
         { label: '🪪 بطاقتي', fn: 'renderCard()' },
     );
     if (ME.isAdmin) items.push({ label: '🛠️ لوحة الإدارة', fn: 'renderAdmin()' });
@@ -14295,8 +14293,6 @@ function buildNav() {
     if (ME.courtStaff) items.push({ label: '🔎 التحقيق العسكري', fn: 'renderInvPanel()' });
     if (ME.sectorInfo && ME.sectorInfo.sector !== 'cyber') items.push({ label: '🎖️ لوحة قيادة القطاع', fn: 'renderSectorPanel()' });
     if (ME.personnelOfficerInfo) items.push({ label: '👥 مسؤول الأفراد', fn: 'renderPersonnelOfficerPanel()' });
-    items.push({ label: '🎖️ سلك الضباط', fn: 'renderOfficerPage()' });
-    if (ME.isTrainer && !ME.isSeniorAdmin) items.push({ label: '🏋️ صفحة المدرب', fn: 'renderTrainerPage()' });
     items.push({ label: '🎧 الدعم', fn: 'spOpen()', cls: 'sp-nav-user' });
     if (ME.isAdmin) items.push({ label: '🎧 تذاكر الدعم', fn: 'renderSupportAdmin()', cls: 'sp-nav-admin' });
     items.push({ label: '🚪 خروج', fn: "location.href='/auth/logout'" });
@@ -15132,9 +15128,7 @@ function renderAdmin(startTab) {
             <div class="tab" onclick="adminTab('hire', this)">توظيف الإدارة</div>
             <div class="tab" onclick="adminTab('thresholds', this)">ترقيات النقاط</div>
             <div class="tab" onclick="adminTab('leave', this)">🌴 طلبات الإجازات</div>
-            <div class="tab" id="tab-excuses" onclick="adminTab('excuses', this)">🩺 غياب بعذر</div>
             <div class="tab" onclick="adminTab('att', this)">🖐️ لوحة البصمة</div>
-            <div class="tab" id="tab-officers" onclick="adminTab('officers', this)">🎖️ إدارة سلك الضباط</div>
             <div class="tab" id="tab-court" onclick="adminTab('court', this)">⚖️ المحكمة العسكرية</div>
             <div class="tab" id="tab-inv" onclick="adminTab('inv', this)">🔎 التحقيق العسكري</div>
             <div class="tab" onclick="adminTab('log', this)">اللوق الشامل</div>
@@ -15211,7 +15205,7 @@ function attBar(pct, color) {
 function attOpen() {
     var box = document.getElementById('admin-content');
     if (!box) return;
-    var T = [['members', '👥 الأعضاء'], ['hours', '⏱️ ساعات الدوام'], ['absent', '🚫 المتغيبون'], ['sectors', '📈 القطاعات'], ['viol', '🚨 تجاوزات الحضور'], ['cfg', '⚙️ الإعدادات']];
+    var T = [['members', '👥 الأعضاء'], ['absent', '🚫 المتغيبون'], ['sectors', '📈 القطاعات'], ['viol', '🚨 تجاوزات الحضور'], ['cfg', '⚙️ الإعدادات']];
     box.innerHTML = '<div class="tabs" id="att-tabs">' + T.map(function (t) {
         return '<div class="tab' + (t[0] === ATTP.tab ? ' active' : '') + '" data-t="' + t[0] + '" onclick="attSetTab(this.dataset.t)">' + t[1] + '</div>';
     }).join('') + '</div><div id="att-body"></div>';
@@ -15980,7 +15974,6 @@ function renderHighCommandPanel() {
             <div class="tab active" onclick="hcTabSwitch('pending', this)">⏳ الطلبات المعلّقة</div>
             <div class="tab" onclick="hcTabSwitch('history', this)">📜 السجل</div>
             <div class="tab" onclick="hcTabSwitch('att', this)">🚨 تجاوزات الحضور</div>
-            <div class="tab" onclick="hcTabSwitch('exc', this)">🩺 أعذار الغياب</div>
         </div>
         <div id="hc-content"></div>\`;
     hcTabSwitch('pending');
@@ -17828,7 +17821,7 @@ function cardFields(p) {
 }
 const MC_DATA = {};
 const MC_OPT = {};
-const MC_ROWS = [['name', 'الاسم'], ['rank', 'الرتبة'], ['unit', 'اليونت'], ['num', 'رقم البطاقة'], ['points', 'النقاط'], ['sector', 'القطاع'], ['notes', 'الملاحظات'], ['excused', 'الغياب بعذر'], ['removed', 'الغياب المُزال']];
+const MC_ROWS = [['name', 'الاسم'], ['rank', 'الرتبة'], ['unit', 'اليونت'], ['num', 'رقم البطاقة'], ['points', 'النقاط'], ['sector', 'القطاع'], ['notes', 'الملاحظات']];
 function mcFace(f) {
     return '<div class="mc-face">' +
         '<div class="mc-t name" data-k="name">' + cardEsc(f.name) + '</div>' +
@@ -17997,7 +17990,7 @@ async function clearAllLogs() {
 }
 let accView_ = 'approved';
 let ACC_LIST = [];
-const ACC_SECTORS = [['', 'بدون قطاع'], ['patrol', 'الدوريات'], ['roadSecurity', 'أمن الطرق'], ['antiDrugs', 'مكافحة المخدرات'], ['cyber', 'الأمن السيبراني']];
+const ACC_SECTORS = [['', 'بدون قطاع'], ['lsbd', 'LSBD'], ['ssf', 'SSF'], ['militaryPolice', 'الشرطة العسكرية'], ['militaryAffairs', 'الشؤون العسكرية']];
 function accEsc(t) {
     return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -18630,9 +18623,10 @@ async function loadNotesPage() {
         <div class="card">
             <div style="font-size:13px;color:var(--muted);margin-bottom:8px;">حذف ملاحظات قطاع كامل:</div>
             <div class="row" style="gap:8px;flex-wrap:wrap;">
-                <button class="btn sm danger" onclick="openSectorNotesDelete('patrol')">🗑️ ملاحظات الدوريات</button>
-                <button class="btn sm danger" onclick="openSectorNotesDelete('roadSecurity')">🗑️ ملاحظات أمن الطرق</button>
-                <button class="btn sm danger" onclick="openSectorNotesDelete('antiDrugs')">🗑️ ملاحظات المكافحة</button>
+                <button class="btn sm danger" onclick="openSectorNotesDelete('lsbd')">🗑️ ملاحظات LSBD</button>
+                <button class="btn sm danger" onclick="openSectorNotesDelete('ssf')">🗑️ ملاحظات SSF</button>
+                <button class="btn sm danger" onclick="openSectorNotesDelete('militaryPolice')">🗑️ ملاحظات الشرطة العسكرية</button>
+                <button class="btn sm danger" onclick="openSectorNotesDelete('militaryAffairs')">🗑️ ملاحظات الشؤون العسكرية</button>
             </div>
         </div>\`;
     if (list.length === 0) { box.innerHTML = sectorButtons + '<div class="card center" style="color:var(--muted);">لا توجد ملاحظات مسجلة</div>'; return; }
@@ -20912,6 +20906,7 @@ async function offaTrDel(uid) {
 /* تحديث تلقائي من الـ polling العام */
 var OFFANN = { shown: false, id: null, tick: 0, busy: false };
 async function offAnnCheck() {
+    return; // إعلان سلك الضباط محذوف
     if (!ME || ME.blocked || OFFANN.shown || OFFANN.busy || VC) return;
     OFFANN.busy = true;
     try {
@@ -21134,7 +21129,7 @@ function flRcBtnHtml() {
     if (!ME || !ME.isReceptionOfficer) return '';
     if (!ME.isSeniorAdmin && !(ME.att && ME.att.status === 'in')) return '';
     if (ME.receptionOpen) return '<button class=\"btn sm danger\" onclick=\"flReceptionClose()\">🔒 إغلاق الاستلام</button>';
-    return '<button class=\"btn sm\" onclick=\"flReceptionOpen()\">🎤 فتح استلام</button>';
+    return '';
 }
 function flRcRefresh() {
     var w = document.getElementById('rc-btn-wrap');
