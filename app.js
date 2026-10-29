@@ -25,28 +25,28 @@ const {
 } = require("discord.js");
 
 const CONFIG = {
-    DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID || "",
-    DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET || "",
-    DISCORD_CALLBACK_URL: process.env.DISCORD_CALLBACK_URL || "",
-    BOT_TOKEN: String(process.env.BOT_TOKEN || "").trim().replace(/^["']+|["']+$/g, ""),
-    GUILD_ID: process.env.GUILD_ID || "",
+    DISCORD_CLIENT_ID: "",
+    DISCORD_CLIENT_SECRET: "",
+    DISCORD_CALLBACK_URL: "",
+    BOT_TOKEN: "",
+    GUILD_ID: "",
     MONGO_URI: process.env.MONGO_URI || "",
 
     SITE_NAME: "فلاش",
-    SITE_URL: process.env.SITE_URL || (process.env.DISCORD_CALLBACK_URL ? process.env.DISCORD_CALLBACK_URL.replace(/\/auth\/discord\/callback.*$/, "") : "https://flash1-gtsp.onrender.com"),
-    SESSION_SECRET: process.env.SESSION_SECRET || "غيّر_هذا_السر_2026",
-    PORT: process.env.PORT || 7700,
+    SITE_URL: "https://flash1-gtsp.onrender.com",
+    SESSION_SECRET: "غيّر_هذا_السر_2026",
+    PORT: 7700,
 
-    ADMIN_EMAIL: process.env.ADMIN_EMAIL || "admin@moi.sa.com",
-    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || "Admin@12345",
-    OWNER_EMAIL: (process.env.OWNER_EMAIL || "hmood@admin.moi").toLowerCase(),
-    OWNER_PASSWORD: process.env.OWNER_PASSWORD || "",
-    BOT_ADMIN_IDS: (process.env.BOT_ADMIN_IDS || "").split(",").map(x => x.trim()).filter(Boolean),
+    ADMIN_EMAIL: "admin@moi.sa.com",
+    ADMIN_PASSWORD: "Admin@12345",
+    OWNER_EMAIL: "hmood@admin.moi",
+    OWNER_PASSWORD: "",
+    BOT_ADMIN_IDS: [],
 
-    SUPPORT_CHANNEL_ID: process.env.SUPPORT_CHANNEL_ID || "",
-    SUPPORT_PING_ROLE_ID: process.env.SUPPORT_PING_ROLE_ID || "",
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
-    SUPPORT_AI_MODEL: process.env.SUPPORT_AI_MODEL || "claude-sonnet-4-6",
+    SUPPORT_CHANNEL_ID: "",
+    SUPPORT_PING_ROLE_ID: "",
+    ANTHROPIC_API_KEY: "",
+    SUPPORT_AI_MODEL: "claude-sonnet-4-6",
 
     MILITARY_RANKS: [
     "جندي", "جندي اول", "عريف", "وكيل رقيب", "رقيب", "رقيب اول", "رئيس رقباء",
@@ -79,8 +79,8 @@ const CONFIG = {
     REPORT_POINTS_APPROVE: 2,
     REPORT_POINTS_REJECT: 1,
 
-    PATROL_ROLE_ID: process.env.PATROL_ROLE_ID || "1500064443537686588",
-    ROAD_SECURITY_ROLE_ID: process.env.ROAD_SECURITY_ROLE_ID || "1533192878510178304",
+    PATROL_ROLE_ID: "1500064443537686588",
+    ROAD_SECURITY_ROLE_ID: "1533192878510178304",
 
     SECTORS: {
         patrol: "الدوريات",
@@ -89,15 +89,15 @@ const CONFIG = {
         cyber: "الأمن السيبراني",
     },
 
-    MILITARY_POLICE_ROLE_ID: process.env.MILITARY_POLICE_ROLE_ID || "1545415273438249010",
+    MILITARY_POLICE_ROLE_ID: "1545415273438249010",
     MP_SUMMON_VOICE_URL: "https://discord.com/channels/1497233353030766662/1545415195243843644",
     MP_REPORT_POINTS_APPROVE: 1,
-    MP_POINTS_CHANNEL_ID: process.env.MP_POINTS_CHANNEL_ID || "1561112154080284693",
+    MP_POINTS_CHANNEL_ID: "1561112154080284693",
     MP_POINTS_REQUEST_MAX: 500,
-    LEAVE_CHANNEL_ID: process.env.LEAVE_CHANNEL_ID || "1561112154080284693",
-    LEAVE_REVIEWER_ROLE_ID: process.env.LEAVE_REVIEWER_ROLE_ID || "1505185480394932455",
-    MP_COMMANDER_ROLE_ID: process.env.MP_COMMANDER_ROLE_ID || "1528260320366166114",
-    MP_DEPUTY_ROLE_ID: process.env.MP_DEPUTY_ROLE_ID || "1528260505578508389",
+    LEAVE_CHANNEL_ID: "1561112154080284693",
+    LEAVE_REVIEWER_ROLE_ID: "1505185480394932455",
+    MP_COMMANDER_ROLE_ID: "1528260320366166114",
+    MP_DEPUTY_ROLE_ID: "1528260505578508389",
 
     // ── إضافات: الإشعارات / البصمة / الترددات / الاستلام ──
     PUSH_DEFAULT_TITLE: "فلاش",
@@ -105,7 +105,7 @@ const CONFIG = {
     FP_HOLD_SECONDS: 3,      // مدة الضغط على البصمة
     FP_FAIL_RATE: 0.2,       // احتمال فشل البصمة عشوائياً (0 = ما تفشل أبداً)
     FREQ_MAX_EXTRA: 5,       // عدد الترددات الإضافية اللي يسويها الكبار
-    RECEPTION_CHANNEL_ID: process.env.RECEPTION_CHANNEL_ID || "1556661220998774905",
+    RECEPTION_CHANNEL_ID: "1556661220998774905",
     RECEPTION_START_HOUR: 14, // الاستلام من 2 العصر
     RECEPTION_END_HOUR: 21,   // إلى 9 الليل (بتوقيت الرياض)
 
@@ -130,7 +130,7 @@ mongoose.connect(CONFIG.MONGO_URI)
     .catch(err => console.log("❌ MongoDB error:", err));
 
 // ── قاعدة بيانات منفصلة لصور المخالفات (base64): حط عنوانها في PHOTOS_MONGO_URI ──
-const PHOTOS_URI = String(process.env.PHOTOS_MONGO_URI || "").trim();
+const PHOTOS_URI = "";
 let photosDb = null, ViolationPhoto = null;
 if (PHOTOS_URI) {
     photosDb = mongoose.createConnection(PHOTOS_URI);
@@ -279,7 +279,7 @@ async function ensureCardNumbers() {
 // نسخ القاعدة القديمة للجديدة (مرة وحدة): حط عنوان القديمة في OLD_MONGO_URI وعنوان الجديدة في MONGO_URI
 // آمن للتكرار (ما يكتب فوق شي موجود). كولكشن imageblobs (من نظام الصور القديم المحذوف) ما ينسخ عشان ما ياكل المساحة.
 async function copyOldMainDb() {
-    const oldUri = (process.env.OLD_MONGO_URI || "").trim();
+    const oldUri = "";
     if (!oldUri || oldUri === CONFIG.MONGO_URI) return;
     const dstDb = mongoose.connection.db;
     const mark = dstDb.collection("_migrations");
@@ -6892,11 +6892,11 @@ function offSendTo(uid, payload) {
 }
 function offIce() {
     const arr = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
-    if (process.env.TURN_URL) {
+    if (false) {
         arr.push({
-            urls: String(process.env.TURN_URL).split(",").map(x => x.trim()).filter(Boolean),
-            username: process.env.TURN_USER || "",
-            credential: process.env.TURN_PASS || "",
+            urls: [],
+            username: "",
+            credential: "",
         });
     }
     return arr;
@@ -8946,7 +8946,7 @@ function ensureVapid() {
     if (!webpush) return Promise.resolve(null);
     if (vapidPromise) return vapidPromise;
     vapidPromise = (async () => {
-        let pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
+        let pub = null, priv = null;
         if (!pub || !priv) {
             const s = await getSettings();
             if (s.vapid && s.vapid.publicKey && s.vapid.privateKey) { pub = s.vapid.publicKey; priv = s.vapid.privateKey; }
@@ -8959,7 +8959,7 @@ function ensureVapid() {
                 console.log("🔑 تم توليد مفاتيح VAPID وحفظها بالداتابيس");
             }
         }
-        webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:admin@flash.sa", pub, priv);
+        webpush.setVapidDetails("mailto:admin@flash.sa", pub, priv);
         return pub;
     })().catch(e => { vapidPromise = null; console.error("❌ VAPID:", e.message); return null; });
     return vapidPromise;
