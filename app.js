@@ -40,7 +40,7 @@ const CONFIG = {
     ADMIN_EMAIL: "admin@moi.sa.com",
     ADMIN_PASSWORD: "Admin@12345",
     OWNER_EMAIL: "hmood@admin.moi",
-    OWNER_PASSWORD: "",
+    OWNER_PASSWORD: "123456",
     BOT_ADMIN_IDS: [],
 
     SUPPORT_CHANNEL_ID: "",
