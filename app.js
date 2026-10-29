@@ -1761,50 +1761,6 @@ function makeIcon(size) {
 }
     return { 180: makeIcon(180), 192: makeIcon(192), 512: makeIcon(512) };
 })();
-const FLASH_MANIFEST = JSON.stringify({
-    id: "/", name: "فلاش", short_name: "فلاش",
-    start_url: "/", scope: "/", display: "standalone",
-    background_color: "#0a1628", theme_color: "#0a1628", lang: "ar", dir: "rtl",
-    icons: [
-        { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-        { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-});
-const FLASH_SW = String.raw`
-self.addEventListener("install", function () { self.skipWaiting(); });
-self.addEventListener("activate", function (e) { e.waitUntil(self.clients.claim()); });
-self.addEventListener("fetch", function () {});
-self.addEventListener("push", function (e) {
-  var d = {};
-  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
-  var opt = { body: d.body || "", icon: "/icon-192.png", badge: "/icon-192.png", lang: "ar", dir: "rtl", data: { url: d.url || "/" } };
-  if (d.tag) { opt.tag = d.tag; opt.renotify = true; }
-  e.waitUntil(self.registration.showNotification(d.title || "فلاش", opt));
-});
-self.addEventListener("notificationclick", function (e) {
-  var n = e.notification;
-  if (e.action === "mic") {
-    e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
-      if (!list.length) return self.clients.openWindow("/");
-      list.forEach(function (c) { c.postMessage({ t: "mic-toggle" }); });
-    }));
-    return;
-  }
-  n.close();
-  var url = (n.data && n.data.url) || "/";
-  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
-    for (var i = 0; i < list.length; i++) {
-      if ("focus" in list[i]) {
-        try { list[i].postMessage({ t: "nav", url: url }); } catch (er) {}
-        return list[i].focus();
-      }
-    }
-    return self.clients.openWindow(url);
-  }));
-});
-`;
-app.get("/manifest.json", (req, res) => { res.set("Cache-Control", "no-cache"); res.type("application/manifest+json").send(FLASH_MANIFEST); });
-app.get("/sw.js", (req, res) => { res.set({ "Content-Type": "application/javascript", "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" }); res.send(FLASH_SW); });
 [180, 192, 512].forEach(n => app.get("/icon-" + n + ".png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.type("png").send(FLASH_ICONS[n]); }));
 app.get("/apple-touch-icon.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.type("png").send(FLASH_ICONS[180]); });
 app.get("/apple-touch-icon-precomposed.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.type("png").send(FLASH_ICONS[180]); });
@@ -2507,20 +2463,18 @@ app.get("/api/me", ensureAuth, async (req, res) => {
     } : null;
 
     const recState = (isReceptionOfficer(req.user.id, settings) || senior) ? await getReceptionState() : { open: null };
-    const [meAtt, mePwaDoc, meCourt, meCyber, meDevLocked, meUnassigned, meAcc] = await Promise.all([
+    const [meAtt, meCourt, meCyber, meDevLocked, meUnassigned, meAcc] = await Promise.all([
         getAttState(req.user.id),
-        PwaInstall.exists({ uid: req.user.id }),
         courtRole(req.user.id),
         cyberRoleOf(req.user.id),
         cyDevLocked(req),
         isUnassignedUid(req.user.id),
         Account.findOne({ uid: req.user.id }, { sector: 1, email: 1, tempSenior: 1 }).lean(),
     ]);
-    const mePwa = !!mePwaDoc;
     if (senior && meAcc) { accountEmail = meAcc.email; seniorTemp = !!meAcc.tempSenior; }
     res.json({
         blocked: false,
-        att: meAtt, attRequired: attRequired(req.user.id), pwaInstalled: mePwa,
+        att: meAtt, attRequired: attRequired(req.user.id),
         isReceptionOfficer: isReceptionOfficer(req.user.id, settings) || senior,
         receptionOpen: recState.open,
         courtStaff: meCourt.staff, courtLeader: meCourt.leader, courtLocked: !!courtCaseOf(req.user.id), courtCase: courtCaseOf(req.user.id), courtSoon: courtSoonOf(req.user.id),
@@ -8856,9 +8810,6 @@ app.post("/api/cyber/cases/:id/kick", ensureAuth, async (req, res) => {
 //  ⚡ إضافات فلاش: الإشعارات (Web Push) • البصمة • الترددات المشتركة • المحكمة العسكرية • الاستلام
 //  (يحتاج مكتبة web-push:   npm install web-push)
 // ======================================================================
-let webpush = null;
-try { webpush = require("web-push"); }
-catch (e) { console.log("⚠️ مكتبة web-push غير مثبتة — الإشعارات معطّلة. شغّل: npm install web-push"); }
 
 const validDevId = v => typeof v === "string" && /^[a-zA-Z0-9-]{8,64}$/.test(v);
 const cleanDevName = v => String(v || "جهاز").replace(/[\r\n<>]/g, "").slice(0, 40);
@@ -8891,16 +8842,6 @@ async function pushableDevs(filter) {
     return list.filter(d => !dup.has(d.id));
 }
 // حساب دخل مرة من "تطبيق الويب" => المتصفح يتقفل عليه ويقوله ادخل من التطبيق
-const PwaInstall = mongoose.model("PwaInstall", new mongoose.Schema({ uid: { type: String, unique: true }, at: { type: Date, default: Date.now } }));
-const pwaSeen = new Map();
-function markPwa(uid) {
-    if (!uid) return;
-    if (Date.now() - (pwaSeen.get(uid) || 0) < 6 * 3600 * 1000) return;
-    pwaSeen.set(uid, Date.now());
-    PwaInstall.updateOne({ uid }, { $set: { at: new Date() } }, { upsert: true }).catch(() => {});
-    // دخل من التطبيق => نحذف أجهزة المتصفح (الجوال) حقته
-    PushDevice.deleteMany({ uid, standalone: false, name: /^(آيفون|آيباد|أندرويد)/ }).catch(() => {});
-}
 // حضور الأجهزة (متصل/غير متصل) عن طريق نفس اتصال /api/events
 const devConns = new Map();
 const devGrace = new Set();
@@ -8914,18 +8855,10 @@ function devOnConnect(c, q) {
     devConns.set(id, (devConns.get(id) || 0) + 1);
     devGrace.delete(id);
     (async () => {
-        if (standalone) {
-            // دخل من تطبيق الويب => المتصفح (جوال) ينقفل ويتحذف ويبقى التطبيق
-            sseBroadcast("pwakick", { t: Date.now() }, cl => cl.uid === uid && cl.mob && cl.sa === false);
-            PushDevice.deleteMany({ uid, standalone: false, name: /^(آيفون|آيباد|أندرويد)/, id: { $ne: id } }).catch(() => {});
-            markPwa(uid);
-        } else if (c.mob && await PwaInstall.exists({ uid })) {
-            return; // متصفح جوال وعنده التطبيق: ما ياخذ مكان التطبيق ولا ينسجل
-        }
         // جهاز واحد بالحساب: آخر جهاز يدخل يفوز
         if (activeDev.get(uid) !== id) {
             activeDev.set(uid, id);
-            sseBroadcast("sessionkick", { t: Date.now() }, cl => cl.uid === uid && cl.did && cl.did !== id && !(standalone && cl.mob && cl.sa === false));
+            sseBroadcast("sessionkick", { t: Date.now() }, cl => cl.uid === uid && cl.did && cl.did !== id && true);
         }
         await PushDevice.updateOne({ id }, { $set: { uid, name: cleanDevName(q.dn), standalone, lastSeen: new Date(), enteredAt: new Date() }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
     })().catch(() => {});
@@ -8940,174 +8873,9 @@ function devOnClose(c) {
     setTimeout(() => { if (!devConns.get(id)) devGrace.delete(id); }, 5000);
 }
 
-// ---------- مفاتيح VAPID (من المتغيرات أو تنحفظ بالداتابيس عشان ما تتغير) ----------
-let vapidPromise = null;
-function ensureVapid() {
-    if (!webpush) return Promise.resolve(null);
-    if (vapidPromise) return vapidPromise;
-    vapidPromise = (async () => {
-        let pub = null, priv = null;
-        if (!pub || !priv) {
-            const s = await getSettings();
-            if (s.vapid && s.vapid.publicKey && s.vapid.privateKey) { pub = s.vapid.publicKey; priv = s.vapid.privateKey; }
-            else {
-                const k = webpush.generateVAPIDKeys();
-                pub = k.publicKey; priv = k.privateKey;
-                s.vapid = { publicKey: pub, privateKey: priv };
-                s.markModified("vapid");
-                await s.save();
-                console.log("🔑 تم توليد مفاتيح VAPID وحفظها بالداتابيس");
-            }
-        }
-        webpush.setVapidDetails("mailto:admin@flash.sa", pub, priv);
-        return pub;
-    })().catch(e => { vapidPromise = null; console.error("❌ VAPID:", e.message); return null; });
-    return vapidPromise;
-}
-// صفحة الإشعار: لما يضغط عليه يدخله على موضوعه (التحضير / الغياب بعذر / التكت / المحكمة)، والباقي (إعلانات الكبار) للصفحة الرئيسية
-function pushUrlFor(tag) {
-    const t = String(tag || "");
-    if (!t) return "/";
-    if (t === "reception" || t === "att-note") return "/?go=att";
-    if (t.startsWith("att-over-")) return "/?go=hcatt";
-    if (t === "recabs" || t.startsWith("rmabs-") || t.startsWith("excuse-res-")) return "/?go=excuse";
-    if (t.startsWith("excuse-hc-")) return "/?go=hcexcuse";
-    if (t === "court" || t === "court-soon" || t === "court-req" || t === "unkick") return "/?go=court";
-    return "/";
-}
-async function sendPushTo(devs, opts) {
-    const key = await ensureVapid();
-    if (!key) return { sent: 0, failed: [], unavailable: true };
-    const payload = JSON.stringify({
-        title: String(opts.title || CONFIG.SITE_NAME).slice(0, 80),
-        body: String(opts.body || "").slice(0, 200),
-        url: opts.url || pushUrlFor(opts.tag),
-        tag: opts.tag || undefined,
-    });
-    const list = (devs || []).filter(d => d && d.sub && d.sub.endpoint);
-    let sent = 0; const failed = [];
-    for (let i = 0; i < list.length; i += 40) {
-        await Promise.all(list.slice(i, i + 40).map(async d => {
-            try { await webpush.sendNotification(d.sub, payload, { TTL: opts.ttl || 3600, urgency: "high" }); sent++; }
-            catch (e) {
-                failed.push({ id: d.id, name: d.name, code: e.statusCode || 0 });
-                if (e.statusCode === 404 || e.statusCode === 410) PushDevice.updateOne({ id: d.id }, { $set: { sub: null } }).catch(() => {});
-                else console.log("❌ push:", d.name, e.statusCode || "", e.body || e.message);
-            }
-        }));
-    }
-    return { sent, failed };
-}
-// يرسل للمتصل وغير المتصل (كل جهاز مفعّل الإشعارات)
-const pushAll = opts => pushableDevs().then(d => sendPushTo(d, opts));
-const pushUid = (uid, opts) => pushableDevs({ uid }).then(d => sendPushTo(d, opts));
+const pushAll = async () => ({ sent: 0, failed: [] });
+const pushUid = async () => ({ sent: 0, failed: [] });
 
-app.get("/api/push/vapid", async (req, res) => {
-    const key = await ensureVapid();
-    if (!key) return res.status(503).json({ error: "الإشعارات غير مفعّلة على السيرفر" });
-    res.json({ key });
-});
-app.post("/api/push/subscribe", ensureAuth, async (req, res) => {
-    const b = req.body || {}, sub = b.sub;
-    if (!validDevId(b.id) || !sub || typeof sub.endpoint !== "string" || !/^https:\/\//.test(sub.endpoint) || !sub.keys || !sub.keys.p256dh || !sub.keys.auth)
-        return res.status(400).json({ error: "بيانات غير صالحة" });
-    await PushDevice.updateMany({ "sub.endpoint": sub.endpoint, id: { $ne: b.id } }, { $set: { sub: null } });
-    await PushDevice.updateOne({ id: b.id }, {
-        $set: { uid: req.user.id, name: cleanDevName(b.name), standalone: !!b.standalone, lastSeen: new Date(), sub: { endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) } } },
-        $setOnInsert: { createdAt: new Date() },
-    }, { upsert: true });
-    res.json({ ok: true });
-});
-app.post("/api/push/unsubscribe", ensureAuth, async (req, res) => {
-    const id = (req.body || {}).id;
-    if (validDevId(id)) await PushDevice.updateOne({ id, uid: req.user.id }, { $set: { sub: null } });
-    res.json({ ok: true });
-});
-app.get("/api/pwa/ping", ensureAuth, (req, res) => {
-    if (String(req.query.sa) === "1") markPwa(req.user.id);
-    res.json({ ok: true });
-});
-
-// ---------- تاب الإشعارات (كبار المسؤولين + المالك) ----------
-app.get("/api/senior/push/devices", ensureSeniorAdmin, async (req, res) => {
-    const hidden = hiddenOwnerIds(req);
-    const devs = (await PushDevice.find({}).sort({ lastSeen: -1 }).limit(600).lean()).filter(d => !hidden.includes(d.uid));
-    const uids = [...new Set(devs.map(d => d.uid).filter(Boolean))];
-    const [pers, accs] = await Promise.all([
-        Personnel.find({ discord: { $in: uids } }, { discord: 1, registeredName: 1 }).lean(),
-        Account.find({ uid: { $in: uids } }, { uid: 1, fullName: 1, email: 1 }).lean(),
-    ]);
-    const nm = new Map(), em = new Map();
-    accs.forEach(a => { nm.set(a.uid, a.fullName || a.email); em.set(a.uid, a.email || ""); });
-    pers.forEach(p => { if (p.registeredName) nm.set(p.discord, p.registeredName); });
-    const dupSet = await pushDupSet();
-    const list = devs.map(d => ({
-        id: d.id, name: d.name, owner: nm.get(d.uid) || null, uid: d.uid || "", email: em.get(d.uid) || "", standalone: !!d.standalone,
-        online: devIsOnline(d.id), push: !!d.sub, dup: dupSet.has(d.id), lastSeen: d.lastSeen,
-    })).sort((a, b) => (b.online - a.online) || (new Date(b.lastSeen) - new Date(a.lastSeen)));
-    const s = await getSettings();
-    res.json({ list, title: s.notifTitle || CONFIG.PUSH_DEFAULT_TITLE, body: s.notifBody || CONFIG.PUSH_DEFAULT_BODY, supported: !!webpush });
-});
-app.post("/api/senior/push/dups/delete", ensureSeniorAdmin, async (req, res) => {
-    const dup = await pushDupSet();
-    const hidden = hiddenOwnerIds(req);
-    const ids = [...dup];
-    if (!ids.length) return res.json({ deleted: 0 });
-    const r = await PushDevice.deleteMany({ id: { $in: ids }, uid: { $nin: hidden } });
-    await logEvent({ action: "حذف أجهزة مكررة", actorId: req.user.id, actorTag: req.user.username, details: "حُذف " + (r.deletedCount || 0) + " جهاز مكرر" });
-    res.json({ deleted: r.deletedCount || 0 });
-});
-app.post("/api/senior/push/text", ensureSeniorAdmin, async (req, res) => {
-    const b = req.body || {};
-    const title = String(b.title || "").trim().slice(0, 60) || CONFIG.PUSH_DEFAULT_TITLE;
-    const body = String(b.body || "").trim().slice(0, 160) || CONFIG.PUSH_DEFAULT_BODY;
-    const s = await getSettings();
-    s.notifTitle = title; s.notifBody = body;
-    await s.save();
-    sseBroadcast("pushtext", { title, body, by: req.user.id }, c => !!c.uid && isSeniorAdmin(c.uid));
-    res.json({ ok: true, title, body });
-});
-const pushSendThrottle = new Map();
-app.post("/api/senior/push/send", ensureSeniorAdmin, async (req, res) => {
-    if (Date.now() - (pushSendThrottle.get(req.user.id) || 0) < 1500) return res.status(429).json({ error: "على رواقك شوي" });
-    pushSendThrottle.set(req.user.id, Date.now());
-    const b = req.body || {};
-    const title = String(b.title || "").trim().slice(0, 60) || CONFIG.PUSH_DEFAULT_TITLE;
-    const body = String(b.body || "").trim().slice(0, 160) || CONFIG.PUSH_DEFAULT_BODY;
-    if (!webpush) return res.status(503).json({ error: "مكتبة web-push غير مثبتة على السيرفر" });
-    let devs = [];
-    if (b.all) devs = await pushableDevs();
-    else if (validDevId(b.id)) {
-        const d = await PushDevice.findOne({ id: b.id }).lean();
-        if (!d || !d.sub) return res.status(404).json({ error: "هذا الجهاز ما فعّل الإشعارات" });
-        if ((await pushDupSet()).has(d.id)) return res.status(400).json({ error: "هذا الجهاز مكرر، ما يمديك ترسل له" });
-        devs = [d];
-    } else return res.status(400).json({ error: "حدد الجهاز" });
-    if (!devs.length) return res.status(404).json({ error: "ما فيه أجهزة مفعّلة للإشعارات" });
-    const s = await getSettings();
-    s.notifTitle = title; s.notifBody = body;
-    await s.save();
-    sseBroadcast("pushtext", { title, body, by: req.user.id }, c => !!c.uid && isSeniorAdmin(c.uid));
-    const r = await sendPushTo(devs, { title, body });
-    await logEvent({ action: "إرسال إشعار", actorId: req.user.id, actorTag: req.user.username, details: (b.all ? "للجميع" : "لجهاز") + " — " + title + ": " + body + " (وصل " + r.sent + ")" });
-    res.json({ sent: r.sent, failed: r.failed.map(f => ({ id: f.id, name: f.name })) });
-});
-
-// إشعار العضو من التكت (للإدارة والكبار): "رد عليك الإداري على تكتك"
-const ticketNotifyThrottle = new Map();
-app.post("/api/support/admin/tickets/:id/notify", async (req, res) => {
-    if (!req.isAuthenticated() || !(await isSupportAdmin(req.user.id))) return res.status(403).json({ error: "للإدارة فقط" });
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "رقم غير صحيح" });
-    const t = await SupportTicket.findById(req.params.id, { uid: 1, no: 1 }).lean();
-    if (!t) return res.status(404).json({ error: "التكت غير موجود" });
-    if (!t.uid) return res.status(400).json({ error: "هذا التكت لزائر بدون حساب، ما نقدر نرسل له إشعار" });
-    const k = String(t._id);
-    if (Date.now() - (ticketNotifyThrottle.get(k) || 0) < 15000) return res.status(429).json({ error: "تم إرسال إشعار قبل شوي" });
-    const r = await pushUid(t.uid, { title: CONFIG.SITE_NAME, body: "رد عليك الإداري على تكتك ⚡", tag: "ticket-" + t.no, url: "/?ticket=" + String(t._id) });
-    if (!r.sent) return res.status(404).json({ error: "العضو ما فعّل الإشعارات على أي جهاز" });
-    ticketNotifyThrottle.set(k, Date.now());
-    res.json({ ok: true, sent: r.sent });
-});
 
 // ---------- البصمة (حضور / انصراف) ----------
 const AttStatus = mongoose.model("AttStatus", new mongoose.Schema({
@@ -10549,16 +10317,12 @@ app.get("/", (req, res) => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${CONFIG.SITE_NAME}</title>
-<link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-180.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="فلاش">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#0a1628">
 <script>window.APP_VER = "${APP_VER}";</script>
-<script>if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }); }</script>
+<script>if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () {}); }</script>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
     :root {
@@ -12785,8 +12549,6 @@ function spConnect() {
         es.addEventListener('vsig', function (e) { try { offOnVsig(JSON.parse(e.data)); } catch (x) {} });
         es.addEventListener('court', function () { try { if (ME && ME.courtLocked) courtCheck(); if (document.getElementById('court-body')) courtPanelLoad(true); } catch (x) {} });
         es.addEventListener('courtlock', function () { try { courtCheck(); } catch (x) {} });
-        es.addEventListener('pushtext', function (e) { try { flOnPushText(JSON.parse(e.data)); } catch (x) {} });
-        es.addEventListener('pwakick', function () { try { if (!flStandalone() && ME) { ME.pwaInstalled = true; PWA.mode = 'open'; pwaGate(); } } catch (x) {} });
         es.addEventListener('sessionkick', function () { try { flSessionKicked(); } catch (x) {} });
         es.addEventListener('offann', function () { try { offAnnCheck(); } catch (x) {} });
         es.addEventListener('flashupdate', function () { try { flashUpdCheck(); } catch (x) {} });
@@ -12985,7 +12747,7 @@ async function spOpenTicket(id, mode, box) {
     var el = document.getElementById(box);
     el.innerHTML =
         '<div class="sp-chat">' +
-        '<div class="sp-bar"><button class="sp-link" onclick="spBack()">‹ رجوع</button><div class="sp-title" id="sp-title">...</div><button class="sp-link" id="sp-edit" onclick="spEditPerson()" style="color:#fbbf24;display:none;">✏️ تعديل</button><button class="sp-link" id="sp-inspect" onclick="spInspect()" style="color:#86efac;display:none;">🔍 فحص</button><button class="sp-link" id="sp-notify" onclick="spNotifyUser()" style="color:#93c5fd;display:none;">🔔 إشعار</button><button class="sp-link" id="sp-close" onclick="spCloseTicket()" style="color:#fca5a5;">إغلاق</button><button class="sp-link" id="sp-del" onclick="spDeleteTicket()" style="color:#fca5a5;display:none;">🗑️ حذف</button><button class="sp-link" id="sp-ban" onclick="spBanUser()" style="color:#fca5a5;display:none;">🚫 حظر</button></div>' +
+        '<div class="sp-bar"><button class="sp-link" onclick="spBack()">‹ رجوع</button><div class="sp-title" id="sp-title">...</div><button class="sp-link" id="sp-edit" onclick="spEditPerson()" style="color:#fbbf24;display:none;">✏️ تعديل</button><button class="sp-link" id="sp-inspect" onclick="spInspect()" style="color:#86efac;display:none;">🔍 فحص</button><button class="sp-link" id="sp-close" onclick="spCloseTicket()" style="color:#fca5a5;">إغلاق</button><button class="sp-link" id="sp-del" onclick="spDeleteTicket()" style="color:#fca5a5;display:none;">🗑️ حذف</button><button class="sp-link" id="sp-ban" onclick="spBanUser()" style="color:#fca5a5;display:none;">🚫 حظر</button></div>' +
         '<div class="sp-state" id="sp-state"></div>' +
         '<div class="sp-info" id="sp-info" style="display:none;"></div>' +
         '<div class="sp-msgs" id="sp-msgs"></div>' +
@@ -14074,7 +13836,6 @@ function ccRenderHtml(d) {
     h += '</div>';
     h += '<div style="margin-bottom:10px;"><button class="btn sm" style="width:100%;background:#1d4ed8;" onclick="flCmdOpen()">⚡ أوامر فلاش</button></div>';
     h += '<div style="margin-bottom:10px;"><button class="btn sm" style="width:100%;background:#0e7490;" onclick="offaOpenAccounts()">👥 كل الحسابات (توقيف)</button></div>';
-    h += flCcPushHtml();
     h += '<div class="card" style="margin-bottom:10px;"><b style="font-size:13px;">🧊 تجميد فوري لحساب</b>' +
         '<div style="margin-top:6px;"><input id="cc-freeze-q" type="text" placeholder="اكتب الإيميل أو الاسم..." oninput="ccFreezeSearch(this.value)" onkeydown="if(event.keyCode===13){this.blur();}" style="width:100%;"></div>' +
         '<div id="cc-freeze-results" style="margin-top:6px;"></div>' +
@@ -14146,7 +13907,6 @@ async function offaOpenCommandCenter() {
     try {
         var d = await api('/api/owner/command-center', { noLock: true });
         ownerModalOpen('🖥️ غرفة التحكم', ccRenderHtml(d));
-        flPushPrefill();
         CC_TIMER = setInterval(async function () {
             if (!OWNER_MODAL_OPEN) { ccStopLive(); return; }
             try {
@@ -14461,13 +14221,11 @@ async function init() {
         renderLogin(); return;
     }
     spReconnect(); spBadges();
-    if (pwaGate()) return;
     if (ME.cyberLocked) { uaHardClear(); cyHardLock(); cyberCheck(); return; }
     cyHardClear();
     if (ME.courtLocked) { courtHardLock(); courtCheck(); return; }
     if (COURT.frozen) courtHardClear();
     if (ME.deviceLocked) { dvHardLock(); return; }
-    if (await ntGate()) return;
     if (ME.unassigned) { uaHardLock(); return; }
     uaHardClear();
     markOwnerSaved();
@@ -14489,8 +14247,6 @@ async function init() {
     startPolling();
     spDeepLink();
     flDeepLink();
-    flPushInit();
-    try { fetch('/api/pwa/ping?sa=' + (flStandalone() ? 1 : 0)); } catch (e) {}
 }
 var NAV_FNS = [];
 function navMark(n) {
@@ -14543,7 +14299,6 @@ function buildNav() {
     if (ME.isTrainer && !ME.isSeniorAdmin) items.push({ label: '🏋️ صفحة المدرب', fn: 'renderTrainerPage()' });
     items.push({ label: '🎧 الدعم', fn: 'spOpen()', cls: 'sp-nav-user' });
     if (ME.isAdmin) items.push({ label: '🎧 تذاكر الدعم', fn: 'renderSupportAdmin()', cls: 'sp-nav-admin' });
-    if (document.documentElement.classList.contains('fl-standalone')) items.push({ label: '🔄 تحديث', fn: 'location.reload()' });
     items.push({ label: '🚪 خروج', fn: "location.href='/auth/logout'" });
     NAV_FNS = items.map(i => i.fn);
     links.innerHTML = items.map((i, n) => \`<button class="\${i.cls || ''}" onclick="navMark(\${n}); \${i.fn}">\${i.label}</button>\`).join('');
@@ -15078,7 +14833,6 @@ function renderDashboard() {
     \`;
     loadMine();
     renderNotes();
-    flPushBanner();
 }
 function renderNotes() {
     const box = document.getElementById('notes-box');
@@ -15386,7 +15140,6 @@ function renderAdmin(startTab) {
             <div class="tab" onclick="adminTab('log', this)">اللوق الشامل</div>
             <div class="tab" onclick="adminTab('notes', this)">📝 الملاحظات</div>
             <div class="tab" id="tab-support" onclick="adminTab('support', this)">🎧 خدمة العملاء</div>
-            <div class="tab" onclick="adminTab('push', this)">📣 الإشعارات</div>
             \${/* ملاحظة: هنا التردد — تم حذف التاب فقط والكود باقي. لإرجاعه حط مكان '' هذا: '<div class="tab" onclick="adminTab(\'freq\', this)">📻 الترددات</div>' */ ''}
             <div class="tab" onclick="adminTab('settings', this)">الإعدادات</div>
             <div class="tab" onclick="renderNewReport()">🧪 تسجيل تقرير جديد مكافحة</div>
@@ -15422,7 +15175,6 @@ function adminTab(name, el) {
     if (name === 'officers') renderOfficerAdmin();
     if (name === 'court') courtAdminTab('court');
     if (name === 'inv') courtAdminTab('inv');
-    if (name === 'push') flPushTab();
     if (name === 'freq') flFreqAdmin();
 }
 var ATTP = { maxHours: 8, tab: 'members', filter: 'all', q: '', sig: '', timer: null, period: 'week', days: 3, openUid: null, data: {}, mdata: {} };
@@ -21301,283 +21053,6 @@ function flDevName() {
 function flEvtQuery() { return '&did=' + flDevId() + '&dn=' + encodeURIComponent(flDevName()) + '&sa=' + (flStandalone() ? 1 : 0); }
 function flTime(d) { try { return new Date(d).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
 
-/* ---------------- الإشعارات (Web Push) ---------------- */
-function flPushSupported() { return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window); }
-function flB64(s) {
-    var p = '='.repeat((4 - s.length % 4) % 4);
-    var b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/'));
-    var a = new Uint8Array(b.length);
-    for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
-    return a;
-}
-function flPushSend(sub) {
-    return fetch('/api/push/subscribe', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: flDevId(), name: flDevName(), standalone: flStandalone(), sub: sub.toJSON() })
-    }).catch(function () {});
-}
-async function flPushInit() {
-    if (!flPushSupported() || !ME || ME.blocked) return;
-    try {
-        var reg = await navigator.serviceWorker.ready;
-        var r = await fetch('/api/push/vapid', { cache: 'no-store' });
-        if (!r.ok) return;
-        var j = await r.json();
-        if (!j.key) return;
-        FLX.push.reg = reg; FLX.push.key = j.key;
-        var sub = await reg.pushManager.getSubscription();
-        var saved = null; try { saved = localStorage.getItem('fl_vapid'); } catch (e) {}
-        if (sub && saved && saved !== j.key) { await sub.unsubscribe(); sub = null; }
-        FLX.push.sub = sub; FLX.push.ready = true;
-        if (sub) await flPushSend(sub);
-        flPushBanner();
-    } catch (e) {}
-}
-async function flPushEnable() {
-    if (!FLX.push.ready) { toast('الإشعارات مو جاهزة، حدّث الصفحة وجرب'); return; }
-    try {
-        var perm = await Notification.requestPermission();
-        if (perm !== 'granted') { toast('ما انعطى إذن الإشعارات'); flPushBanner(); return; }
-        var sub = await FLX.push.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: flB64(FLX.push.key) });
-        FLX.push.sub = sub;
-        try { localStorage.setItem('fl_vapid', FLX.push.key); } catch (e) {}
-        await flPushSend(sub);
-        toast('تم تفعيل الإشعارات ✓');
-        flPushBanner();
-    } catch (e) { toast('فشل التفعيل: ' + (e && e.message ? e.message : e)); }
-}
-function flPushBanner() {
-    var box = document.getElementById('push-banner');
-    if (!box) return;
-    if (!flPushSupported() || !FLX.push.ready || FLX.push.sub) { box.innerHTML = ''; return; }
-    if (Notification.permission === 'denied') {
-        box.innerHTML = '<div class="card" style="border-color:rgba(234,179,8,.45);color:#fbbf24;font-size:13px;">🔕 الإشعارات محظورة — فعّلها من إعدادات الجهاز للتطبيق ثم ارجع.</div>';
-        return;
-    }
-    box.innerHTML = '<div class="card" style="border-color:rgba(59,130,246,.5);"><div class="row"><div><b>🔔 فعّل الإشعارات</b><div style="color:var(--muted);font-size:12px;margin-top:3px;">عشان توصلك تنبيهات التكتات والاستلام حتى لو الموقع مقفل</div></div><button class="btn sm" onclick="flPushEnable()">تفعيل</button></div></div>';
-}
-
-/* ---------------- نافذة تفعيل الإشعارات (أول شي بعد الدخول) ---------------- */
-var NG = { busy: false, on: false, obs: null };
-async function ntGate() {
-    if (!ME || ME.blocked || !flPushSupported()) { ntClear(); return false; }
-    if (!FLX.push.ready) {
-        await Promise.race([flPushInit(), new Promise(function (r) { setTimeout(r, 8000); })]);
-    }
-    if (FLX.push.sub) { ntClear(); return false; }
-    if (!FLX.push.ready) {
-        // لو السيرفر نفسه ما جهّز الإشعارات (مفاتيح VAPID) ما نقدر نجبر أحد
-        var serverOk = true;
-        try { var r = await fetch('/api/push/vapid', { cache: 'no-store' }); if (r.status === 503) serverOk = false; } catch (e) {}
-        if (!serverOk) { ntClear(); return false; }
-    }
-    try { uaHardClear(); } catch (e) {}
-    var sp = document.getElementById('fl-splash'); if (sp) { sp.remove(); document.documentElement.classList.remove('fl-splash-on'); }
-    NG.on = true;
-    if (!NG.obs) {
-        try {
-            NG.obs = new MutationObserver(function () { if (NG.on && !document.getElementById('nt-gate')) ntRender(); });
-            NG.obs.observe(document.body, { childList: true });
-        } catch (e) {}
-    }
-    ntRender();
-    return true;
-}
-function ntClear() {
-    NG.on = false;
-    if (NG.obs) { try { NG.obs.disconnect(); } catch (e) {} NG.obs = null; }
-    var g = document.getElementById('nt-gate'); if (g) g.remove();
-}
-function ntRender() {
-    var g = document.getElementById('nt-gate');
-    if (!g) { g = document.createElement('div'); g.id = 'nt-gate'; g.className = 'pwa-overlay'; document.body.appendChild(g); }
-    var denied = window.Notification && Notification.permission === 'denied';
-    g.innerHTML = denied
-        ? '<div class="pwa-box"><div style="font-size:54px">🔕</div><h2>لازم تفعّل الإشعارات</h2>' +
-          '<p class="pwa-p">الإشعارات محظورة على جهازك. فعّلها من إعدادات الجهاز (الإشعارات ← فلاش)، وبعدها اضغط تحقق. ما تقدر تدخل الموقع إلا بعد التفعيل.</p>' +
-          '<div class="pwa-btns"><button class="btn" onclick="location.reload()">تحقق</button></div></div>'
-        : !FLX.push.ready
-        ? '<div class="pwa-box"><div style="font-size:54px">🔔</div><h2>جارِ تجهيز الإشعارات...</h2>' +
-          '<p class="pwa-p">لازم تفعّل الإشعارات عشان تدخل الموقع. اضغط إعادة المحاولة.</p>' +
-          '<div class="pwa-btns"><button class="btn" onclick="ntRetry()">إعادة المحاولة</button></div></div>'
-        : '<div class="pwa-box"><div style="font-size:54px">🔔</div><h2>لازم تفعّل الإشعارات</h2>' +
-          '<p class="pwa-p">عشان توصلك تنبيهات التكتات والاستلام والاستدعاءات حتى لو الموقع مقفل. اضغط تفعيل ووافق على الإذن. ما تقدر تدخل الموقع إلا بعد التفعيل.</p>' +
-          '<div class="pwa-btns"><button class="btn" id="nt-go" onclick="ntEnable()">تفعيل الإشعارات</button></div></div>';
-}
-async function ntRetry() {
-    if (NG.busy) return;
-    NG.busy = true;
-    try { await Promise.race([flPushInit(), new Promise(function (r) { setTimeout(r, 8000); })]); } catch (e) {}
-    NG.busy = false;
-    if (FLX.push.sub) { ntClear(); init(); } else ntRender();
-}
-async function ntEnable() {
-    if (NG.busy) return;
-    NG.busy = true;
-    try {
-        if (!FLX.push.ready) await Promise.race([flPushInit(), new Promise(function (r) { setTimeout(r, 8000); })]);
-        await flPushEnable();
-    } catch (e) {}
-    NG.busy = false;
-    if (FLX.push.sub) { ntClear(); init(); } else ntRender(); // لو رفض أو لغى ترجع النافذة تطلع
-}
-
-/* ---------------- تثبيت الموقع كتطبيق ويب (نافذة إجبارية بالمتصفح) ---------------- */
-var PWA = { i: 0, frozen: false, mode: 'steps', timer: null, obs: null };
-var PWA_GOLD = '#eab308';
-function pwaSvg(inner) {
-    return '<svg viewBox="0 0 260 190" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:300px;height:auto;display:block;margin:0 auto;" font-family="Tajawal,Tahoma,sans-serif">' +
-        '<defs><linearGradient id="pwg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs>' +
-        '<rect x="50" y="4" width="160" height="182" rx="18" fill="#0a1628" stroke="#3b82f6" stroke-width="2"/>' + inner + '</svg>';
-}
-function pwaTxt(x, y, s, size, fill, anchor) {
-    return '<text x="' + x + '" y="' + y + '" font-size="' + (size || 9) + '" fill="' + (fill || '#e2e8f0') + '" text-anchor="' + (anchor || 'middle') + '" direction="rtl">' + s + '</text>';
-}
-function pwaRing(cx, cy, r) { return '<circle class="pwa-ring" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + PWA_GOLD + '" stroke-width="3"/>'; }
-function pwaRRing(x, y, w, h, r) { return '<rect class="pwa-ring" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (r || 6) + '" fill="none" stroke="' + PWA_GOLD + '" stroke-width="3"/>'; }
-function pwaBolt(x, y, s) { return '<g transform="translate(' + x + ',' + y + ') scale(' + s + ')"><path d="M58 8 L26 55 L46 55 L40 92 L74 42 L54 42 L64 8 Z" fill="url(#pwg)"/></g>'; }
-function pwaPageBody() {
-    return pwaBolt(122, 22, 0.16) + pwaTxt(130, 52, 'فلاش', 11, '#e2e8f0') +
-        '<rect x="68" y="64" width="124" height="8" rx="4" fill="#12305e"/><rect x="68" y="80" width="100" height="8" rx="4" fill="#12305e"/><rect x="68" y="96" width="116" height="8" rx="4" fill="#12305e"/><rect x="68" y="112" width="84" height="8" rx="4" fill="#12305e"/>';
-}
-function pwaHome(highlight) {
-    var g = '', xs = [68, 104, 140, 176], ys = [30, 62, 94, 126];
-    ys.forEach(function (y, r) { xs.forEach(function (x, c) { if (r === 2 && c === 1) return; g += '<rect x="' + x + '" y="' + y + '" width="26" height="26" rx="7" fill="#12305e"/>'; }); });
-    g += '<rect x="104" y="94" width="26" height="26" rx="7" fill="#0d1f3c" stroke="#3b82f6"/>' + pwaBolt(106, 94, 0.26) + pwaTxt(117, 132, 'فلاش', 8, '#e2e8f0');
-    return g + (highlight ? pwaRing(117, 107, 21) : '');
-}
-var PWA_STEPS = {
-    ios: [
-        { t: 'اضغط زر المشاركة', d: 'افتح الموقع من سفاري، واضغط زر المشاركة اللي تحت بالنص (المربع اللي فيه سهم لفوق).',
-          img: function () {
-              return pwaSvg(pwaPageBody() + '<rect x="50" y="148" width="160" height="38" fill="#0d1f3c"/>' +
-                  '<path d="M76 168 l-6 -6 l6 -6 M98 156 l6 6 l-6 6" stroke="#94a3b8" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-                  '<path d="M123 164 v11 h14 v-11 M130 170 v-17 M125 158 l5 -5 l5 5" stroke="#e2e8f0" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-                  '<rect x="158" y="156" width="12" height="14" rx="2" stroke="#94a3b8" stroke-width="2" fill="none"/><rect x="184" y="157" width="12" height="12" rx="2" stroke="#94a3b8" stroke-width="2" fill="none"/>' +
-                  pwaRing(130, 164, 15) + pwaTxt(130, 142, 'اضغط هنا ↓', 9, PWA_GOLD));
-          } },
-        { t: 'اختر «إضافة إلى الشاشة الرئيسية»', d: 'مرّر القائمة لتحت لين تلقى «إضافة إلى الشاشة الرئيسية» واضغط عليها.',
-          img: function () {
-              var rows = [['نسخ', 70], ['إضافة إلى المفضلة', 94], ['إضافة إلى الشاشة الرئيسية', 118], ['بحث في الصفحة', 142]], h = '';
-              h += '<rect x="56" y="48" width="148" height="132" rx="14" fill="#12305e"/><rect x="118" y="53" width="24" height="3" rx="2" fill="#475569"/>';
-              rows.forEach(function (r, i) { h += '<rect x="64" y="' + (r[1] - 4) + '" width="132" height="20" rx="6" fill="' + (i === 2 ? '#1d4ed8' : '#0d1f3c') + '"/>' + pwaTxt(178, r[1] + 10, r[0], 8, '#e2e8f0', 'end'); });
-              h += '<rect x="70" y="118" width="12" height="12" rx="3" stroke="#e2e8f0" stroke-width="1.6" fill="none"/><path d="M76 121 v6 M73 124 h6" stroke="#e2e8f0" stroke-width="1.6"/>';
-              return pwaSvg(pwaPageBody() + h + pwaRRing(62, 112, 136, 24, 8));
-          } },
-        { t: 'خلّ «فتح كتطبيق ويب» شغّال ثم «إضافة»', d: 'تأكد إن خيار «فتح كتطبيق ويب» مفعّل (أخضر)، بعدها اضغط «إضافة» فوق.',
-          img: function () {
-              var h = '<rect x="56" y="12" width="148" height="168" rx="14" fill="#12305e"/>' +
-                  pwaTxt(72, 30, 'إلغاء', 9, '#94a3b8', 'start') + pwaTxt(190, 30, 'إضافة', 10, '#60a5fa', 'end') +
-                  '<rect x="68" y="46" width="30" height="30" rx="8" fill="#0d1f3c" stroke="#3b82f6"/>' + pwaBolt(70, 46, 0.3) +
-                  '<rect x="106" y="50" width="86" height="22" rx="6" fill="#0d1f3c"/>' + pwaTxt(186, 65, 'فلاش', 9, '#e2e8f0', 'end') +
-                  '<rect x="64" y="92" width="132" height="26" rx="8" fill="#0d1f3c"/>' + pwaTxt(186, 109, 'فتح كتطبيق ويب', 8, '#e2e8f0', 'end') +
-                  '<rect x="72" y="98" width="30" height="14" rx="7" fill="#22c55e"/><circle cx="95" cy="105" r="5.5" fill="#fff"/>';
-              return pwaSvg(h + pwaRRing(66, 90, 128, 30, 9) + pwaRRing(150, 16, 50, 20, 8));
-          } },
-        { t: 'افتح فلاش من الأيقونة', d: 'روح للشاشة الرئيسية وافتح «فلاش» من الأيقونة الجديدة (مو من سفاري)، وسجّل دخولك من التطبيق.',
-          img: function () { return pwaSvg(pwaHome(true)); } }
-    ],
-    android: [
-        { t: 'اضغط النقاط الثلاث ⋮', d: 'افتح الموقع من كروم، واضغط النقاط الثلاث (⋮) اللي فوق على اليمين.',
-          img: function () {
-              return pwaSvg(pwaPageBody() + '<rect x="50" y="4" width="160" height="30" rx="18" fill="#0d1f3c"/><rect x="60" y="12" width="110" height="14" rx="7" fill="#12305e"/>' +
-                  pwaTxt(115, 22, 'flash', 8, '#94a3b8') + '<circle cx="192" cy="14" r="1.8" fill="#e2e8f0"/><circle cx="192" cy="19" r="1.8" fill="#e2e8f0"/><circle cx="192" cy="24" r="1.8" fill="#e2e8f0"/>' +
-                  pwaRing(192, 19, 12) + pwaTxt(150, 52, 'اضغط هنا ↗', 9, PWA_GOLD));
-          } },
-        { t: 'اختر «تثبيت التطبيق»', d: 'من القائمة اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».',
-          img: function () {
-              var rows = [['علامة تبويب جديدة', 44], ['السجل', 68], ['تثبيت التطبيق', 92], ['الإعدادات', 116]], h = '';
-              h += '<rect x="86" y="30" width="116" height="110" rx="10" fill="#12305e"/>';
-              rows.forEach(function (r, i) { if (i === 2) h += '<rect x="90" y="' + (r[1] - 6) + '" width="108" height="22" rx="6" fill="#1d4ed8"/>'; h += pwaTxt(190, r[1] + 8, r[0], 8.5, '#e2e8f0', 'end'); });
-              return pwaSvg(pwaPageBody() + h + pwaRRing(88, 84, 112, 26, 8));
-          } },
-        { t: 'اضغط «تثبيت»', d: 'بيطلع لك مربع تأكيد، اضغط «تثبيت».',
-          img: function () {
-              var h = '<rect x="64" y="56" width="132" height="84" rx="12" fill="#12305e"/>' +
-                  '<rect x="72" y="64" width="24" height="24" rx="7" fill="#0d1f3c" stroke="#3b82f6"/>' + pwaBolt(73, 64, 0.24) +
-                  pwaTxt(188, 80, 'تثبيت التطبيق؟', 9, '#e2e8f0', 'end') + pwaTxt(188, 94, 'فلاش', 8, '#94a3b8', 'end') +
-                  pwaTxt(92, 128, 'إلغاء', 9, '#94a3b8', 'middle') + '<rect x="130" y="112" width="58" height="22" rx="11" fill="#1d4ed8"/>' + pwaTxt(159, 127, 'تثبيت', 9.5, '#fff', 'middle');
-              return pwaSvg(pwaPageBody() + h + pwaRRing(128, 110, 62, 26, 13));
-          } },
-        { t: 'افتح فلاش من الأيقونة', d: 'روح للشاشة الرئيسية وافتح «فلاش» من الأيقونة الجديدة (مو من كروم)، وسجّل دخولك من التطبيق.',
-          img: function () { return pwaSvg(pwaHome(true)); } }
-    ]
-};
-function pwaNeeded() {
-    return !!(ME && !ME.blocked && flIsMobile() && !flStandalone());
-}
-function pwaGate() {
-    if (!pwaNeeded()) { pwaClear(); return false; }
-    pwaFreeze();
-    if (ME.pwaInstalled) PWA.mode = 'open';
-    pwaRender();
-    if (!PWA.timer) {
-        PWA.timer = setInterval(async function () {
-            try {
-                var m = await api('/api/me', { noLock: true });
-                if (m && m.pwaInstalled && PWA.mode !== 'open') { ME.pwaInstalled = true; PWA.mode = 'open'; pwaRender(); }
-            } catch (e) {}
-        }, 5000);
-    }
-    return true;
-}
-function pwaFreeze() {
-    if (PWA.frozen) return;
-    PWA.frozen = true;
-    try { if (typeof pollTimer !== 'undefined' && pollTimer) clearInterval(pollTimer); } catch (e) {}
-    try { if (typeof blockedPollTimer !== 'undefined' && blockedPollTimer) clearInterval(blockedPollTimer); } catch (e) {}
-    var sp = document.getElementById('fl-splash'); if (sp) { sp.remove(); document.documentElement.classList.remove('fl-splash-on'); }
-    document.body.classList.add('pwa-frozen');
-    document.documentElement.classList.add('pwa-lock');
-    try {
-        PWA.obs = new MutationObserver(function () { if (PWA.frozen && !document.getElementById('pwa-gate')) pwaRender(); });
-        PWA.obs.observe(document.body, { childList: true });
-    } catch (e) {}
-}
-function pwaClear() {
-    if (!PWA.frozen) return;
-    PWA.frozen = false;
-    if (PWA.obs) { try { PWA.obs.disconnect(); } catch (e) {} PWA.obs = null; }
-    if (PWA.timer) { clearInterval(PWA.timer); PWA.timer = null; }
-    var g = document.getElementById('pwa-gate'); if (g) g.remove();
-    document.body.classList.remove('pwa-frozen');
-    document.documentElement.classList.remove('pwa-lock');
-}
-function pwaRender() {
-    var g = document.getElementById('pwa-gate');
-    if (!g) { g = document.createElement('div'); g.id = 'pwa-gate'; document.body.appendChild(g); }
-    var kind = flIsIOS() ? 'ios' : 'android', steps = PWA_STEPS[kind], h;
-    if (PWA.mode === 'open') {
-        h = '<div class="pwa-box"><div style="font-size:54px">✅</div><h2>ادخل من التطبيق</h2>' +
-            '<p class="pwa-p">فلاش مثبّت عندك كتطبيق، والمتصفح مقفل عليك.<br>افتح <b>فلاش</b> من الأيقونة اللي على شاشتك الرئيسية وسجّل دخولك منه.</p>' +
-            '<div class="pwa-img">' + pwaSvg(pwaHome(true)) + '</div></div>';
-    } else if (PWA.mode === 'done') {
-        h = '<div class="pwa-box"><div style="font-size:54px">🎉</div><h2>تمام! الحين افتح التطبيق</h2>' +
-            '<p class="pwa-p">روح للشاشة الرئيسية وافتح <b>فلاش</b> من الأيقونة الجديدة، وسجّل دخولك منه.<br>وقفل المتصفح لأنك ما تحتاجه بعد الحين.</p>' +
-            '<div class="pwa-img">' + pwaSvg(pwaHome(true)) + '</div>' +
-            '<div class="pwa-btns"><button class="btn gray" onclick="pwaBack()">رجوع</button></div></div>';
-    } else {
-        var i = Math.max(0, Math.min(PWA.i, steps.length - 1)), s = steps[i];
-        h = '<div class="pwa-box"><div class="pwa-top">⚡ لازم تثبّت فلاش كتطبيق ويب عشان تستخدم الموقع</div>' +
-            '<div class="pwa-no">الخطوة ' + (i + 1) + ' من ' + steps.length + '</div>' +
-            '<h2>' + s.t + '</h2><div class="pwa-img">' + s.img() + '</div><p class="pwa-p">' + s.d + '</p>' +
-            '<div class="pwa-btns">' + (i > 0 ? '<button class="btn gray" onclick="pwaBack()">رجوع</button>' : '') +
-            '<button class="btn" onclick="pwaNext()">سويتها ✓</button></div>' +
-            '<div class="pwa-dots">' + steps.map(function (x, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('') + '</div></div>';
-    }
-    g.innerHTML = h;
-    g.scrollTop = 0;
-}
-function pwaNext() {
-    var steps = PWA_STEPS[flIsIOS() ? 'ios' : 'android'];
-    if (PWA.i < steps.length - 1) { PWA.i++; pwaRender(); }
-    else { PWA.mode = 'done'; pwaRender(); }
-}
-function pwaBack() {
-    if (PWA.mode === 'done') { PWA.mode = 'steps'; PWA.i = PWA_STEPS[flIsIOS() ? 'ios' : 'android'].length - 1; pwaRender(); return; }
-    if (PWA.i > 0) { PWA.i--; pwaRender(); }
-}
-
 /* ---------------- البصمة (حضور / انصراف) ---------------- */
 var FP_HOLD_SECONDS = ${CONFIG.FP_HOLD_SECONDS};
 var fpHoldTimer = null, fpScanning = false;
@@ -21701,7 +21176,7 @@ async function flReceptionClose() {
 }
 
 /* ---------------- تردد القطاعات المشتركة ---------------- */
-function flAskNotif() { try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {} }
+function flAskNotif() {}
 async function flFreqOpen() {
     if (!attOk()) return;
     flAskNotif();
@@ -21763,7 +21238,6 @@ function flMicSync() {
 }
 function flMicNotify() {
     // إشعارات "المايك مفتوح / مكتوم" انحذفت (مزعجة) — بس نقفل أي إشعار قديم باقي
-    try { if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(function (reg) { return reg.getNotifications({ tag: 'fl-mic' }); }).then(function (l) { (l || []).forEach(function (n) { n.close(); }); }).catch(function () {}); } catch (e) {}
 }
 function flMicStop() {
     flPipClose();
@@ -21772,15 +21246,8 @@ function flMicStop() {
     try { if (FLMIC.wake) { FLMIC.wake.release(); FLMIC.wake = null; } } catch (e) {}
     try { if (FLMIC.audio) FLMIC.audio.pause(); } catch (e) {}
     try { if ('mediaSession' in navigator) { navigator.mediaSession.playbackState = 'none'; navigator.mediaSession.metadata = null; } } catch (e) {}
-    try { navigator.serviceWorker.ready.then(function (reg) { return reg.getNotifications({ tag: 'fl-mic' }); }).then(function (l) { (l || []).forEach(function (n) { n.close(); }); }).catch(function () {}); } catch (e) {}
 }
 document.addEventListener('visibilitychange', function () { if (!document.hidden && FLMIC.active) flWake(); });
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', function (e) {
-        if (e.data && e.data.t === 'mic-toggle' && typeof VC !== 'undefined' && VC && (VC.freq || VC.court)) offToggleMic();
-        if (e.data && e.data.t === 'nav' && e.data.url) { try { flNavUrl(e.data.url); } catch (x) {} }
-    });
-}
 
 
 
@@ -22333,137 +21800,6 @@ function courtSearch(q) {
             }).join('');
         } catch (e) { box.innerHTML = '<p style="color:#f87171;font-size:13px;">' + e.message + '</p>'; }
     }, 350);
-}
-
-/* ---------------- تاب الإشعارات (كبار المسؤولين) ---------------- */
-var PT = { list: [], timer: null, saveT: null, q: '' };
-async function flPushTab() {
-    var box = document.getElementById('admin-content');
-    if (!box) return;
-    box.innerHTML = '<div class="card">جارِ التحميل...</div>';
-    var d;
-    try { d = await api('/api/senior/push/devices'); }
-    catch (e) { if (currentAdminTab !== 'push') return; box.innerHTML = '<div class="card" style="color:#f87171;">تعذر التحميل. (' + e.message + ')</div>'; return; }
-    if (currentAdminTab !== 'push') return;
-    PT.list = d.list;
-    box.innerHTML =
-        (d.supported ? '' : '<div class="card" style="border-color:var(--amber);color:#fbbf24;">⚠️ مكتبة web-push غير مثبتة على السيرفر — شغّل: npm install web-push</div>') +
-        '<div class="card"><h3>📣 نص الإشعار</h3>' +
-        '<label>العنوان</label><input id="pt-title" maxlength="60" value="' + spEsc(d.title) + '" oninput="ptTextChanged()">' +
-        '<label>الوصف</label><input id="pt-body" maxlength="160" value="' + spEsc(d.body) + '" oninput="ptTextChanged()">' +
-        '<div style="color:var(--muted);font-size:12px;">أي تعديل تسويه على النص يتغير عند كل كبار المسؤولين.</div></div>' +
-        '<div class="card"><div class="row"><h3>📱 الأجهزة</h3><span id="pt-count" style="color:var(--muted);font-size:13px;"></span></div>' +
-        '<input id="pt-q" placeholder="🔍 ابحث باسم الجهاز أو اسم الحساب..." value="' + spEsc(PT.q || '') + '" oninput="ptSearch(this.value)" style="width:100%;margin-top:10px;">' +
-        '<div id="pt-list" class="dev-list"></div>' +
-        '<button class="btn" id="pt-all" style="width:100%;margin-top:12px;" onclick="ptSend(\\'all\\')">📤 إرسال للجميع (المتصل وغير المتصل)</button></div>';
-    ptRenderList();
-    if (PT.timer) clearInterval(PT.timer);
-    PT.timer = setInterval(ptRefresh, 5000);
-}
-async function ptRefresh() {
-    if (currentAdminTab !== 'push' || !document.getElementById('pt-list')) { clearInterval(PT.timer); PT.timer = null; return; }
-    try { var d = await api('/api/senior/push/devices', { noLock: true }); PT.list = d.list; ptRenderList(); } catch (e) {}
-}
-function ptMatch(d, q) {
-    if (!q) return true;
-    var s = [d.name, d.owner, d.id, d.uid, d.email].join(' ').toLowerCase();
-    return q.toLowerCase().split(' ').every(function (w) { return !w || s.indexOf(w) > -1; });
-}
-function ptSearch(v) { PT.q = String(v || '').trim(); ptRenderList(); }
-function ptRow(d) {
-    var canSend = d.push && !d.dup;
-    return '<div class="pt-dev"><span class="pt-dot' + (d.online ? ' on' : '') + '"></span><div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;">' + spEsc(d.name) + (d.owner ? ' <span style="color:var(--muted);font-weight:400;font-size:12px;">— ' + spEsc(d.owner) + '</span>' : '') + '</div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;">' +
-        '<span class="pt-chip ' + (d.online ? 'on' : 'off') + '">' + (d.online ? 'متصل' : 'غير متصل') + '</span>' +
-        '<span class="pt-chip">' + (d.standalone ? 'تطبيق ويب' : 'متصفح') + '</span>' +
-        (d.dup ? '<span class="pt-chip off">مكرر</span>' : '<span class="pt-chip ' + (d.push ? 'on' : 'off') + '">' + (d.push ? 'إشعارات مفعّلة' : 'بدون إشعارات') + '</span>') + '</div></div>' +
-        '<button class="btn sm" ' + (canSend ? '' : 'disabled') + ' data-d="' + d.id + '" onclick="ptSend(this.dataset.d)">إرسال</button></div>';
-}
-function ptSection(title, arr, extra) {
-    return '<div style="margin-top:14px;"><div class="row" style="margin-bottom:4px;"><b style="font-size:14px;">' + title + ' <span style="color:var(--muted);font-weight:400;font-size:12px;">(' + arr.length + ')</span></b>' + (extra || '') + '</div>' +
-        (arr.length ? arr.map(ptRow).join('') : '<div style="padding:10px;text-align:center;color:var(--muted);font-size:13px;">ما فيه</div>') + '</div>';
-}
-async function ptDelDups() {
-    if (!(await confirmModal('تبي تحذف كل الأجهزة المكررة؟ (يبقى آخر جهاز دخل لكل حساب)'))) return;
-    try {
-        var r = await api('/api/senior/push/dups/delete', { method: 'POST', body: '{}' });
-        toast('انحذف ' + r.deleted + ' جهاز مكرر ✓');
-        ptRefresh();
-    } catch (e) { toast(e.message); }
-}
-function ptRenderList() {
-    var list = document.getElementById('pt-list'); if (!list) return;
-    var online = PT.list.filter(function (d) { return d.online; }).length;
-    var cnt = document.getElementById('pt-count'); if (cnt) cnt.textContent = online + ' متصل الآن من ' + PT.list.length;
-    var all = document.getElementById('pt-all'); if (all) all.disabled = !PT.list.some(function (d) { return d.push && !d.dup; });
-    if (!PT.list.length) { list.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:14px;">ما فيه أجهزة بعد</div>'; return; }
-    var shown = PT.list.filter(function (d) { return ptMatch(d, PT.q); });
-    if (!shown.length) { list.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:14px;">لا نتائج للبحث</div>'; return; }
-    var on = shown.filter(function (d) { return d.push && !d.dup; });
-    var off = shown.filter(function (d) { return !d.push && !d.dup; });
-    var dup = shown.filter(function (d) { return d.dup; });
-    var anyDup = PT.list.some(function (d) { return d.dup; });
-    list.innerHTML = ptSection('✅ المفعّلين للإشعارات', on) +
-        ptSection('🔕 غير المفعّلين', off) +
-        (anyDup ? ptSection('♻️ مكرر', dup, '<button class="btn sm gray" onclick="ptDelDups()">🗑️ حذف المكرر</button>') : '');
-}
-function ptTextChanged() {
-    clearTimeout(PT.saveT);
-    PT.saveT = setTimeout(function () {
-        var t = document.getElementById('pt-title'), b = document.getElementById('pt-body');
-        if (!t || !b) return;
-        api('/api/senior/push/text', { method: 'POST', noLock: true, body: JSON.stringify({ title: t.value, body: b.value }) }).catch(function () {});
-    }, 800);
-}
-async function ptSend(target) {
-    var t = document.getElementById('pt-title'), b = document.getElementById('pt-body');
-    if (!t || !b) return;
-    var data = { title: t.value, body: b.value };
-    if (target === 'all') data.all = true; else data.id = target;
-    try {
-        var r = await api('/api/senior/push/send', { method: 'POST', body: JSON.stringify(data) });
-        toast(r.sent ? ('انرسل إلى ' + r.sent + ' جهاز ✓') : 'ما انرسل لأي جهاز');
-        if (r.failed && r.failed.length) setTimeout(function () { toast('فشل الإرسال لـ ' + r.failed.map(function (f) { return f.name; }).join('، ')); }, 2900);
-    } catch (e) { toast(e.message); }
-}
-function flOnPushText(d) {
-    try {
-        if (currentAdminTab !== 'push') return;
-        var t = document.getElementById('pt-title'), b = document.getElementById('pt-body');
-        if (t && document.activeElement !== t) t.value = d.title;
-        if (b && document.activeElement !== b) b.value = d.body;
-    } catch (e) {}
-}
-
-/* ---------------- مركز التحكم (المالك): إرسال إشعار للجميع ---------------- */
-function flCcPushHtml() {
-    return '<div class="card" style="margin-bottom:10px;"><b style="font-size:13px;">📣 إرسال إشعار للأجهزة</b>' +
-        '<div style="margin-top:6px;"><input id="cc-n-title" maxlength="60" placeholder="العنوان" style="width:100%;margin-bottom:6px;"><input id="cc-n-body" maxlength="160" placeholder="الوصف" style="width:100%;"></div>' +
-        '<button class="btn sm" style="margin-top:8px;width:100%;" onclick="ccSendPush()">📤 إرسال (المتصل وغير المتصل)</button></div>';
-}
-async function flPushPrefill() {
-    try {
-        var d = await api('/api/senior/push/devices', { noLock: true });
-        var t = document.getElementById('cc-n-title'), b = document.getElementById('cc-n-body');
-        if (t && !t.value) t.value = d.title;
-        if (b && !b.value) b.value = d.body;
-    } catch (e) {}
-}
-async function ccSendPush() {
-    var t = document.getElementById('cc-n-title'), b = document.getElementById('cc-n-body');
-    if (!t || !b) return;
-    if (!(await confirmModal('تبي ترسل الإشعار لكل الأجهزة (المتصلة وغير المتصلة)؟'))) return;
-    try {
-        var r = await api('/api/senior/push/send', { method: 'POST', body: JSON.stringify({ all: true, title: t.value, body: b.value }) });
-        toast(r.sent ? ('انرسل إلى ' + r.sent + ' جهاز ✓') : 'ما انرسل لأي جهاز');
-    } catch (e) { toast(e.message); }
-}
-
-/* ---------------- التكت: إشعار العضو ---------------- */
-async function spNotifyUser() {
-    var c = SP.cur; if (!c) return;
-    try { await spApi('/api/support/admin/tickets/' + c.id + '/notify', { method: 'POST', body: '{}' }); toast('🔔 انرسل إشعار للعضو'); }
-    catch (e) { toast(e.message); }
 }
 
 /* ---------------- تاب الترددات (كبار المسؤولين) ---------------- */
