@@ -33,6 +33,7 @@ const CONFIG = {
     MONGO_URI: process.env.MONGO_URI || "",
 
     SITE_NAME: "فلاش",
+    APPLY_BOT_URL: process.env.BOT_APPLY_URL || "",
     SITE_URL: "https://flash1-gtsp.onrender.com",
     SESSION_SECRET: "غيّر_هذا_السر_2026",
     PORT: 7700,
@@ -335,6 +336,9 @@ const AccountSchema = new mongoose.Schema({
     nationality: String,
     passwordHash: String,
     passwordEnc: String,
+    discordUser: { type: String, default: null, index: true },
+    discordTag: { type: String, default: null },
+    unit: { type: String, default: null },
     status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
     isSenior: { type: Boolean, default: false },
     isOwner: { type: Boolean, default: false },
@@ -1056,6 +1060,7 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
     ],
     partials: [Partials.Channel],
 });
@@ -1520,6 +1525,7 @@ async function discordCanReviewViolation(interaction, v, settings) {
 
 client.on("interactionCreate", async interaction => {
     try {
+        if (await handleApplyInteraction(interaction)) return;
         if (interaction.isChatInputCommand()) {
             const { commandName } = interaction;
 
@@ -1672,6 +1678,106 @@ client.on("messageCreate", async message => {
     } finally {
         activeVehicleSessions.delete(message.author.id);
     }
+});
+
+
+// ============================================================
+//  🤖 بوت التقديم: الفرد يراسل البوت بالخاص ← إيمبد + زر تقديم ← نافذة (الاسم/اليونت/كلمة المرور)
+//  ← طلب في "طلبات التسجيل" بالموقع ← القبول/الرفض يوصل بالخاص
+// ============================================================
+const APPLY_BRAND = "© جميع الحقوق محفوظة — ليجون RP";
+const applyDmThrottle = new Map();
+function botApplyUrl() {
+    if (CONFIG.APPLY_BOT_URL) return CONFIG.APPLY_BOT_URL;
+    const id = (client.user && client.user.id) || CONFIG.DISCORD_CLIENT_ID;
+    return id ? "https://discord.com/users/" + id : "";
+}
+function applyEmbed() {
+    return new EmbedBuilder()
+        .setColor(0xe0b44c)
+        .setTitle("⚡ التقديم على فلاش — سيرفر ليجون RP")
+        .setDescription(
+            "أهلاً فيك! 👋\n\n" +
+            "فلاش هو موقع سيرفر ليجون RP لإدارة العساكر: الرتب والنقاط، المخالفات، الإجازات، والبطاقة العسكرية.\n\n" +
+            "**كيف تقدّم؟**\n" +
+            "اضغط زر **تقديم** تحت، واكتب اسمك ويونتك وكلمة مرور حسابك. بعدها يوصل طلبك للإدارة، ولما يُراجَع توصلك النتيجة هنا بالخاص مع معلومات الدخول.\n\n" +
+            "⚠️ الموقع مخصص للمحاكاة واللعب فقط ولا يمت للواقع بصلة."
+        )
+        .setFooter({ text: APPLY_BRAND })
+        .setTimestamp();
+}
+function applyRow() {
+    return new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("flash_apply").setLabel("تقديم").setEmoji("📝").setStyle(ButtonStyle.Success));
+}
+async function sendApplyPanel(channelOrUser) {
+    await channelOrUser.send({ embeds: [applyEmbed()], components: [applyRow()] });
+}
+async function dmApplicant(a, payload) {
+    if (!a || !a.discordUser) return;
+    try { const u = await client.users.fetch(a.discordUser); await u.send(payload); }
+    catch (e) { console.error("❌ تعذر إرسال الخاص للمتقدم:", e.message); }
+}
+function applyApprovedEmbed(a) {
+    let pw = ""; try { pw = decryptText(a.passwordEnc) || ""; } catch (e) {}
+    return new EmbedBuilder().setColor(0x22c55e).setTitle("✅ تم قبول طلبك في فلاش")
+        .setDescription("مبروك! انقبل طلبك، وتقدر تسجّل دخولك للموقع الحين.")
+        .addFields(
+            { name: "الرابط", value: CONFIG.SITE_URL || "—" },
+            { name: "البريد (للدخول)", value: "`" + a.email + "`", inline: true },
+            { name: "كلمة المرور", value: "||" + pw + "||", inline: true },
+            { name: "الاسم", value: a.fullName || "—", inline: true },
+            { name: "اليونت", value: a.unit || "—", inline: true },
+        )
+        .setFooter({ text: APPLY_BRAND }).setTimestamp();
+}
+function applyRejectedEmbed(a, reason) {
+    return new EmbedBuilder().setColor(0xef4444).setTitle("❌ تم رفض طلبك")
+        .setDescription("للأسف انرفض طلبك في فلاش." + (reason ? "\n**السبب:** " + reason : "") + "\n\nتقدر تقدّم مرة ثانية بالضغط على زر التقديم.")
+        .setFooter({ text: APPLY_BRAND }).setTimestamp();
+}
+async function handleApplyInteraction(interaction) {
+    if (interaction.isButton() && interaction.customId === "flash_apply") {
+        const modal = new ModalBuilder().setCustomId("flash_apply_modal").setTitle("التقديم على فلاش");
+        const mk = (id, label, ph, max) => new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setPlaceholder(ph).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(max));
+        modal.addComponents(mk("name", "الاسم", "اسمك بالرول بلاي", 60), mk("unit", "اليونت", "رقم/اسم يونتك", 40), mk("pw", "كلمة المرور (حق حسابك بالموقع)", "6 أحرف أو أكثر", 64));
+        await interaction.showModal(modal);
+        return true;
+    }
+    if (interaction.isModalSubmit() && interaction.customId === "flash_apply_modal") {
+        const name = interaction.fields.getTextInputValue("name").trim();
+        const unit = interaction.fields.getTextInputValue("unit").trim();
+        const pw = interaction.fields.getTextInputValue("pw");
+        const err = (m) => interaction.reply({ embeds: [new EmbedBuilder().setColor(0xef4444).setDescription("❌ " + m).setFooter({ text: APPLY_BRAND })], ephemeral: true });
+        if (name.length < 3) { await err("اكتب اسمك صح (3 أحرف على الأقل)"); return true; }
+        if (!unit) { await err("اكتب اليونت"); return true; }
+        if (pw.length < 6) { await err("كلمة المرور لازم تكون 6 أحرف أو أكثر"); return true; }
+        const uid = interaction.user.id;
+        let acc = await Account.findOne({ discordUser: uid });
+        if (acc && acc.status === "pending") { await err("عندك طلب قيد المراجعة، انتظر رد الإدارة"); return true; }
+        if (acc && acc.status === "approved") { await err("عندك حساب مقبول من قبل، سجّل دخولك بالموقع"); return true; }
+        let base = String(interaction.user.username || "user").toLowerCase().replace(/[^a-z0-9._-]/g, "") || "user";
+        let email = base + "@legion.rp";
+        if (!acc) {
+            if (await Account.exists({ email })) email = base + uid.slice(-4) + "@legion.rp";
+            if (await Account.exists({ email })) email = uid + "@legion.rp";
+        }
+        const fields = { fullName: name, unit, passwordHash: hashPassword(pw), passwordEnc: encryptText(pw), status: "pending", rejectReason: null, discordTag: interaction.user.username, answers: { available: true, capable: true, terms: true } };
+        if (acc) { Object.assign(acc, fields); await acc.save(); }
+        else acc = await Account.create({ uid: newUid(), email, discordUser: uid, ...fields });
+        await logEvent({ action: "طلب تسجيل جديد (بوت)", actorTag: name, details: email + " — " + unit });
+        await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x22c55e).setTitle("📨 تم إرسال طلبك للمراجعة").setDescription("وصل طلبك للإدارة، وبتوصلك النتيجة هنا بالخاص مع المعلومات لما يُراجَع.").setFooter({ text: APPLY_BRAND }).setTimestamp()], ephemeral: true });
+        return true;
+    }
+    return false;
+}
+client.on("messageCreate", async message => {
+    try {
+        if (message.author.bot || message.guild) return;
+        const last = applyDmThrottle.get(message.author.id) || 0;
+        if (Date.now() - last < 20000) return;
+        applyDmThrottle.set(message.author.id, Date.now());
+        await sendApplyPanel(message.channel);
+    } catch (e) { console.error("❌ لوحة التقديم:", e.message); }
 });
 
 // نسخ discord.js الجديدة غيّرت اسم الحدث من ready إلى clientReady، فنسمع للاثنين (وفحص كل 5 ثواني احتياط) عشان البوت يتعرّف عليه الموقع
@@ -2000,6 +2106,9 @@ function validateAccountFields(b, opts = {}) {
 }
 
 app.post("/auth/register", async (req, res) => {
+    return res.status(410).json({ error: "التقديم صار من بوت ديسكورد فقط" });
+});
+app.post("/auth/register-old", async (req, res) => {
     if (!authRateLimit("reg:" + clientIp(req), 8, 60 * 60 * 1000)) return res.status(429).json({ error: "محاولات كثيرة، انتظر شوي وجرب مرة ثانية" });
     const b = req.body || {};
     const v = validateAccountFields(b);
@@ -2220,6 +2329,7 @@ function accView(a, withPw, viewerUid) {
     if (a.isSenior && a.uid !== viewerUid && !ownerUids.has(viewerUid)) withPw = false;
     return {
         uid: a.uid, email: a.email, fullName: a.fullName, age: a.age, nationality: a.nationality,
+        unit: a.unit || null, discordTag: a.discordTag || null,
         status: a.status, isSenior: !!a.isSenior, isOwner: !!a.isOwner, tempSenior: !!a.tempSenior, sector: a.sector || null, isMP: !!a.isMP,
         answers: a.answers || {}, rejectReason: a.rejectReason || null,
         reviewedByTag: a.reviewedByTag || null, reviewedAt: a.reviewedAt || null, createdAt: a.createdAt,
@@ -2235,7 +2345,7 @@ async function approveAccount(a, actor) {
     await Personnel.findOneAndUpdate(
         { discord: a.uid },
         {
-            $set: { registeredName: a.fullName, discordTag: a.fullName, sector: a.sector || null },
+            $set: { registeredName: a.fullName, discordTag: a.fullName, sector: a.sector || null, ...(a.unit ? { unit: a.unit } : {}) },
             $setOnInsert: {
                 unit: a.sector ? (CONFIG.SECTORS[a.sector] || "غير محدد") : "غير محدد",
                 leaveBalance: settings.leaveBalanceDefault ?? CONFIG.DEFAULT_LEAVE_BALANCE,
@@ -2245,12 +2355,14 @@ async function approveAccount(a, actor) {
     );
     await ensureCardNumbers();
     if (a.isSenior) await refreshSeniors();
+    if (a.discordUser) dmApplicant(a, { embeds: [applyApprovedEmbed(a)] }).catch(() => {});
 }
 
 async function rejectAccount(a, actor, reason) {
     a.status = "rejected"; a.rejectReason = reason || null;
     a.reviewedBy = actor.id; a.reviewedByTag = actor.username; a.reviewedAt = new Date();
     await a.save();
+    if (a.discordUser) dmApplicant(a, { embeds: [applyRejectedEmbed(a, reason)] }).catch(() => {});
 }
 
 app.get("/api/admin/registrations", ensureAnyAdmin, async (req, res) => {
@@ -2543,7 +2655,7 @@ app.post("/api/violations/submit", ensureAuth, async (req, res) => {
     try {
         const settings = await getSettings();
         if (settings.disableViolations) return res.status(403).json({ error: "تسجيل المخالفات مغلق حالياً" });
-        if (!(isSeniorAdmin(req.user.id) || isSectorOfficial(req.user.id, settings))) return res.status(403).json({ error: "تسجيل المخالفات لمسؤولي القطاعات فقط" });
+        return res.status(403).json({ error: "تسجيل المخالفة صار من زر «تسجيل مخالفة» (نظام المخالفات العسكرية)" });
         const p = await Personnel.findOne({ discord: req.user.id });
         if (!p || !p.registeredName || !p.unit) return res.status(400).json({ error: "أكمل بياناتك (الاسم واليونت) أولاً" });
         if (p.isBlocked) return res.status(403).json({ error: "أنت موقوف عن تسجيل مخالفات جديدة" });
@@ -10701,6 +10813,7 @@ app.get("/", (req, res) => {
 <script>
 const MILITARY_RANKS = ${JSON.stringify(CONFIG.MILITARY_RANKS)};
 const SECTOR_LABELS = ${JSON.stringify(CONFIG.SECTORS)};
+var BOT_APPLY_URL = ${JSON.stringify(botApplyUrl())};
 let ME = null;
 var REAL_OWNER = false, OWNER_DISGUISE = false;
 try { OWNER_DISGUISE = sessionStorage.getItem('flOd') === '1'; } catch (e) {}
@@ -13890,8 +14003,7 @@ function buildNav() {
     if (ME.isMilitaryPolice && !ME.isSeniorAdmin) {
         items.push({ label: '📝 تسجيل تقرير (شؤون عسكرية)', fn: "openMPReportForm('renderDashboard()')" });
     }
-    if (ME.canViolation) items.push({ label: '📝 تسجيل مخالفة', fn: 'renderNewViolation()' });
-    if (ME.canMilViolation) items.push({ label: '🪖 تسجيل مخالفة عسكرية', fn: 'renderMilViolation()' });
+    if (ME.canMilViolation) items.push({ label: '📝 تسجيل مخالفة', fn: 'renderMilViolation()' });
     if (ME.milViolReviewer) items.push({ label: '⚖️ مراجعة المخالفات العسكرية', fn: 'renderMilViolPanel()' });
     items.push(
         { label: '📋 مخالفاتي', fn: 'renderMinePage()' },
@@ -14305,7 +14417,7 @@ function renderLogin(forceForm) {
         '<a class="auth-forgot" onclick="authForgot()">هل نسيت كلمة المرور ؟</a>' +
         '<button class="auth-btn" id="lg-btn" onclick="doLogin()">تسجيل الدخول</button>' +
         '<div class="auth-sep"></div>' +
-        '<a class="auth-link" onclick="renderRegister()">ليس لديك حساب؟ سجل الآن!</a>'
+        '<button class="auth-btn" style="background:#334155;" onclick="openApplyBot()">ماعندك حساب؟ سجّل الآن</button>'
     );
     const enter = function (e) { if (e.key === 'Enter') doLogin(); };
     document.getElementById('lg-email').onkeydown = enter;
@@ -14330,44 +14442,11 @@ async function doLogin() {
         offerSaveLogin(email, pw);
     } catch (e) { authErr(e.message); }
 }
-function renderRegister() {
-    authShell(
-        '<h1 class="auth-title">سيرفر ليجون RP</h1>' +
-        '<div class="auth-sub">تسجيل حساب جديد</div>' +
-        '<div id="auth-err" class="auth-err"></div>' +
-        '<div class="auth-grid">' +
-            authField('الاسم الرباعي :', 'rg-name', 'text', 'الاسم كاملاً', '') +
-            authField('العمر :', 'rg-age', 'number', '00', '') +
-            authField('البريد الإلكتروني :', 'rg-email', 'email', 'example@email.com', 'ltr') +
-            authField('الجنسية :', 'rg-nat', 'text', 'سعودي', '') +
-        '</div>' +
-        '<div><label class="auth-label">كلمة المرور :</label><div class="pw-wrap"><input id="rg-pw" class="auth-input" type="password" placeholder="••••••••" dir="ltr" autocomplete="off"><button type="button" class="pw-eye" data-t="rg-pw" onclick="togglePwEye(this.dataset.t, this)">👁</button></div><span class="auth-req">* حقل إجباري</span></div>' +
-        '<div class="auth-sep" style="margin:6px 0 20px;"></div>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-avail"><span>هل أنت متفرغ للعمل في سيرفر ليجون RP ؟</span></label>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-capable"><span>هل لديك القدرة علي المشاركة الصوتية والتصوير وتحمل ضغوط العمل ؟</span></label>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-terms"><span>الموافقة علي القوانين والشروط وسياسة سيرفر ليجون RP</span></label>' +
-        '<button class="auth-btn" onclick="doRegister()">إنشاء الحساب</button>' +
-        '<div class="auth-sep" style="margin:22px 0 18px;"></div>' +
-        '<a class="auth-link" onclick="renderLogin()">لديك حساب؟ سجل دخولك</a>'
-    );
+function openApplyBot() {
+    if (BOT_APPLY_URL) window.open(BOT_APPLY_URL, '_blank');
+    else toast('رابط بوت التقديم غير مضبوط');
 }
-async function doRegister() {
-    const v = function (id) { return document.getElementById(id).value.trim(); };
-    const body = {
-        fullName: v('rg-name'), age: v('rg-age'), email: v('rg-email'), nationality: v('rg-nat'),
-        password: document.getElementById('rg-pw').value,
-        available: document.getElementById('rg-avail').checked,
-        capable: document.getElementById('rg-capable').checked,
-        terms: document.getElementById('rg-terms').checked,
-    };
-    if (!body.fullName || !body.age || !body.email || !body.nationality || !body.password) return authErr('عبّي كل الحقول الإجبارية');
-    if (!body.terms) return authErr('لازم توافق على القوانين والشروط وسياسة السيرفر');
-    authErr('');
-    try {
-        await api('/auth/register', { method: 'POST', body: JSON.stringify(body) });
-        renderRegisterDone();
-    } catch (e) { authErr(e.message); }
-}
+function renderRegister() { renderLogin(true); openApplyBot(); }
 function renderRegisterDone() {
     authShell(
         '<div class="auth-done"><div class="ico">✅</div>' +
@@ -14433,8 +14512,7 @@ function renderDashboard() {
                 <div class="row" style="gap:8px;">
                     <button class="btn sm" onclick="renderCard()">بطاقتي</button>
                     \${/* ملاحظة: هنا التردد — تم حذف الزر فقط والكود باقي. لإرجاع الزر استبدل '' بـ flFreqBtnHtml() */ ''}
-                    \${(!ME.violationsDisabled && ME.canViolation) ? '<button class="btn sm" onclick="renderNewViolation()">+ تسجيل مخالفة جديدة</button>' : ''}
-                    \${ME.canMilViolation ? '<button class="btn sm" onclick="renderMilViolation()">🪖 تسجيل مخالفة عسكرية</button>' : ''}
+                    \${ME.canMilViolation ? '<button class="btn sm" onclick="renderMilViolation()">+ تسجيل مخالفة جديدة</button>' : ''}
                     \${flAfterBtnsHtml()}
                 </div>
             </div>
@@ -17110,7 +17188,7 @@ async function loadRegs() {
     box.innerHTML = list.map(function (a) {
         return '<div class="card acc-card">' +
             '<div class="acc-title">' + accEsc(a.fullName) + '</div>' +
-            accRow('العمر', a.age) + accRow('الجنسية', a.nationality) + accRow('البريد', a.email) + accPwRow(a.password) +
+            (a.unit ? accRow('اليونت', a.unit) : '') + (a.discordTag ? accRow('يوزر ديسكورد', a.discordTag) : '') + (a.unit ? '' : accRow('العمر', a.age) + accRow('الجنسية', a.nationality)) + accRow('البريد', a.email) + accPwRow(a.password) +
             accRow('متفرغ للعمل؟', accYN(a.answers && a.answers.available)) +
             accRow('قادر على المشاركة الصوتية والتصوير وتحمل الضغط؟', accYN(a.answers && a.answers.capable)) +
             accRow('تاريخ الطلب', new Date(a.createdAt).toLocaleString('ar')) +
@@ -20884,7 +20962,7 @@ async function renderMilViolation() {
         MV.people = r.list || []; MV.sel = null;
     } catch (e) { toast(e.message); return renderDashboard(); }
     app.innerHTML =
-        "<div class='card'><div class='row'><h2>🪖 تسجيل مخالفة عسكرية</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع</button></div>" +
+        "<div class='card'><div class='row'><h2>📝 تسجيل مخالفة</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع</button></div>" +
         "<label>العسكري المخالف (من فريق أول إلى جندي)</label>" +
         "<input id='mv-search' placeholder='🔍 ابحث بالاسم أو الرتبة أو رقم البطاقة...' oninput='mvFilter(this.value)'>" +
         "<div id='mv-sel' style='margin:8px 0;color:var(--muted);font-size:13px;'>لم تختر أحد بعد</div>" +
