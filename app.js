@@ -25,11 +25,11 @@ const {
 } = require("discord.js");
 
 const CONFIG = {
-    DISCORD_CLIENT_ID: "",
-    DISCORD_CLIENT_SECRET: "",
-    DISCORD_CALLBACK_URL: "",
-    BOT_TOKEN: "",
-    GUILD_ID: "",
+    DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID || "",
+    DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET || "",
+    DISCORD_CALLBACK_URL: process.env.DISCORD_CALLBACK_URL || "",
+    BOT_TOKEN: process.env.BOT_TOKEN || "",
+    GUILD_ID: process.env.GUILD_ID || "",
     MONGO_URI: process.env.MONGO_URI || "",
 
     SITE_NAME: "فلاش",
@@ -40,12 +40,12 @@ const CONFIG = {
     ADMIN_EMAIL: "admin@moi.sa.com",
     ADMIN_PASSWORD: "Admin@12345",
     OWNER_EMAIL: "hmood@admin.moi",
-    OWNER_PASSWORD: "123456",
+    OWNER_PASSWORD: process.env.OWNER_PASSWORD || "123456",
     BOT_ADMIN_IDS: [],
 
-    SUPPORT_CHANNEL_ID: "",
-    SUPPORT_PING_ROLE_ID: "",
-    ANTHROPIC_API_KEY: "",
+    SUPPORT_CHANNEL_ID: process.env.SUPPORT_CHANNEL_ID || "",
+    SUPPORT_PING_ROLE_ID: process.env.SUPPORT_PING_ROLE_ID || "",
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
     SUPPORT_AI_MODEL: "claude-sonnet-4-6",
 
     MILITARY_RANKS: [
@@ -75,17 +75,13 @@ const CONFIG = {
     MAX_VEHICLES_ADD: 60,
     MAX_PHOTO_MB: 3,
 
-    ANTI_DRUGS_ROLE_ID: "1500064767082233926",
     REPORT_POINTS_APPROVE: 2,
     REPORT_POINTS_REJECT: 1,
 
-    PATROL_ROLE_ID: "1500064443537686588",
-    ROAD_SECURITY_ROLE_ID: "1533192878510178304",
 
     SECTORS: {
         lsbd: "LSBD",
         ssf: "SSF",
-        militaryPolice: "الشرطة العسكرية",
         militaryAffairs: "الشؤون العسكرية",
     },
 
@@ -105,9 +101,6 @@ const CONFIG = {
     FP_HOLD_SECONDS: 3,      // مدة الضغط على البصمة
     FP_FAIL_RATE: 0.2,       // احتمال فشل البصمة عشوائياً (0 = ما تفشل أبداً)
     FREQ_MAX_EXTRA: 5,       // عدد الترددات الإضافية اللي يسويها الكبار
-    RECEPTION_CHANNEL_ID: "1556661220998774905",
-    RECEPTION_START_HOUR: 14, // الاستلام من 2 العصر
-    RECEPTION_END_HOUR: 21,   // إلى 9 الليل (بتوقيت الرياض)
 
     WARNING_PENALTIES: [
         { id: "deduct5",          label: "خصم 5 نقاط",                        type: "points",  value: 5 },
@@ -130,7 +123,7 @@ mongoose.connect(CONFIG.MONGO_URI)
     .catch(err => console.log("❌ MongoDB error:", err));
 
 // ── قاعدة بيانات منفصلة لصور المخالفات (base64): حط عنوانها في PHOTOS_MONGO_URI ──
-const PHOTOS_URI = "";
+const PHOTOS_URI = process.env.PHOTOS_MONGO_URI || process.env.PHOTOS_URI || "";
 let photosDb = null, ViolationPhoto = null;
 if (PHOTOS_URI) {
     photosDb = mongoose.createConnection(PHOTOS_URI);
@@ -323,6 +316,8 @@ async function copyOldMainDb() {
 
 async function ensureSectorFields() {
     try {
+        await Account.updateMany({ sector: "militaryPolice" }, { $set: { sector: "militaryAffairs" } });
+        await Personnel.updateMany({ sector: "militaryPolice" }, { $set: { sector: "militaryAffairs", unit: "الشؤون العسكرية" } });
         const accs = await Account.find({ status: "approved" }, { uid: 1, sector: 1 }).lean();
         const bySector = {};
         for (const a of accs) { const k = a.sector || ""; (bySector[k] = bySector[k] || []).push(a.uid); }
@@ -660,6 +655,7 @@ const LeaveRequest = mongoose.model("LeaveRequest", LeaveRequestSchema);
 const VehicleSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
     photo: { type: String, default: null },
+    rank: { type: String, default: null },
     addedBy: String,
     createdAt: { type: Date, default: Date.now }
 });
@@ -701,6 +697,7 @@ const SettingsSchema = new mongoose.Schema({
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
+            officersOfficerId: { type: String, default: null }, officersOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
@@ -708,6 +705,7 @@ const SettingsSchema = new mongoose.Schema({
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
+            officersOfficerId: { type: String, default: null }, officersOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
@@ -715,6 +713,7 @@ const SettingsSchema = new mongoose.Schema({
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
+            officersOfficerId: { type: String, default: null }, officersOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
@@ -722,6 +721,7 @@ const SettingsSchema = new mongoose.Schema({
             commanderId: { type: String, default: null }, commanderName: { type: String, default: null },
             deputyId: { type: String, default: null }, deputyName: { type: String, default: null },
             personnelOfficerId: { type: String, default: null }, personnelOfficerName: { type: String, default: null },
+            officersOfficerId: { type: String, default: null }, officersOfficerName: { type: String, default: null },
             attendanceOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
             violationsOfficers: { type: [{ _id: false, id: String, name: String }], default: [] },
         },
@@ -744,7 +744,6 @@ const SettingsSchema = new mongoose.Schema({
     officerTrainers: { type: [String], default: [] },
     notifTitle: { type: String, default: null },
     notifBody: { type: String, default: null },
-    receptionOfficers: { type: [{ id: String, name: String }], default: [] },
     supportCanned: { type: [{ title: String, text: String }], default: [] },
     attConfig: { type: mongoose.Schema.Types.Mixed, default: null },
     vapid: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -908,10 +907,14 @@ function getPersonnelOfficerSector(userId, settings) {
     const sl = settings.sectorLeadership || {};
     for (const key of Object.keys(CONFIG.SECTORS)) {
         const sec = sl[key];
-        if (sec && sec.personnelOfficerId === userId) return { sector: key, sectorLabel: CONFIG.SECTORS[key] };
+        if (sec && key !== "ssf" && sec.personnelOfficerId === userId) return { sector: key, sectorLabel: CONFIG.SECTORS[key], kind: "po" };
+        if (sec && key === "lsbd" && sec.officersOfficerId === userId) return { sector: key, sectorLabel: CONFIG.SECTORS[key], kind: "oo" };
     }
     return null;
 }
+// مسؤول الأفراد = ملازم وتحت (رئيس رقباء وتحت) | مسؤول الضباط = من ملازم إلى فريق أول
+function inPoScope(info, rank) { return info && info.kind === "oo" ? !isJuniorRank(rank) : isJuniorRank(rank); }
+function poRoleLabel(info) { return info && info.kind === "oo" ? "مسؤول ضباط" : "مسؤول أفراد"; }
 
 function getSectorAttOfficer(userId, settings) {
     const sl = settings.sectorLeadership || {};
@@ -928,6 +931,10 @@ function getSectorViolOfficer(userId, settings) {
         if (sec && (sec.violationsOfficers || []).some(m => m.id === userId)) return { sector: key, sectorLabel: CONFIG.SECTORS[key], role: "violOfficer" };
     }
     return null;
+}
+// مسؤول قطاع = قائد / نائب / مسؤول أفراد / مسؤول ضباط / مسؤول تحضير / مسؤول مخالفات
+function isSectorOfficial(userId, settings) {
+    return !!(getSectorRole(userId, settings) || getPersonnelOfficerSector(userId, settings) || getSectorAttOfficer(userId, settings) || getSectorViolOfficer(userId, settings));
 }
 // أعضاء القطاع اللي يقدر هذا المراجع يقبل مخالفاتهم (بدون نفسه وبدون قائد القطاع)
 async function sectorReviewableIds(sectorKey, reviewerUid, settings, excludeCommander) {
@@ -1060,7 +1067,7 @@ async function isMilitary(uid) {
     try {
         const a = await Account.findOne({ uid, status: "approved" }).lean();
         if (!a) return { ok: false, reason: "حسابك غير مقبول" };
-        return { ok: true, isAntiDrugs: a.sector === "antiDrugs" };
+        return { ok: true };
     } catch (e) {
         console.error("❌ isMilitary خطأ:", e.message);
         return { ok: false, reason: e.message };
@@ -1074,7 +1081,7 @@ async function sendSummonDM(discordId, timeLabel) {
         const embed = new EmbedBuilder()
             .setTitle("📣 لديك استدعاء")
             .setColor(0xf59e0b)
-            .setDescription(`عليك استدعاء من الشرطة العسكرية.\n**الوقت:** ${timeLabel || "الآن"}`)
+            .setDescription(`عليك استدعاء من الشؤون العسكرية.\n**الوقت:** ${timeLabel || "الآن"}`)
             .setTimestamp();
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setLabel("🚪 دخول الاستدعاء").setStyle(ButtonStyle.Link).setURL(CONFIG.MP_SUMMON_VOICE_URL),
@@ -1095,7 +1102,7 @@ async function getMilitaryPoliceMemberIds() {
     try {
         return await getFlashRegisteredUids({ isMP: true });
     } catch (e) {
-        console.error("❌ فشل جلب أعضاء الشرطة العسكرية:", e.message);
+        console.error("❌ فشل جلب أعضاء الشؤون العسكرية:", e.message);
         return null;
     }
 }
@@ -2058,14 +2065,6 @@ async function ensureSeniorAdmin(req, res, next) {
     next();
 }
 
-async function ensureAntiDrugsRole(req, res, next) {
-    if (!req.isAuthenticated()) return res.status(401).json({ error: "غير مسجّل دخول" });
-    if (isSeniorAdmin(req.user.id)) return next();
-    const check = await isMilitary(req.user.id);
-    if (!check.isAntiDrugs) return res.status(403).json({ error: "تسجيل التقارير مخصص لمديرية مكافحة المخدرات فقط" });
-    next();
-}
-
 async function ensureAnyAdmin(req, res, next) {
     if (!req.isAuthenticated()) return res.status(401).json({ error: "غير مسجّل دخول" });
     const settings = await getSettings();
@@ -2133,7 +2132,7 @@ async function ensureAttViewer(req, res, next) {
         if (ao && !scope.sectors.includes(ao.sector)) scope.sectors.push(ao.sector);
         const mp = !!getMPRole(req.user.id, settings) || isMPPersonnelOfficer(req.user.id, settings) || await isMilitaryPoliceMember(req.user.id);
         if (mp) { scope.all = true; scope.absentTodayOnly = true; }
-        if (!scope.sectors.length && !mp) return res.status(403).json({ error: "هذا القسم لقادة القطاعات ومسؤولي التحضير والشرطة العسكرية فقط" });
+        if (!scope.sectors.length && !mp) return res.status(403).json({ error: "هذا القسم لقادة القطاعات ومسؤولي التحضير والشؤون العسكرية فقط" });
     }
     req.attScope = scope; req.settings = settings;
     next();
@@ -2150,10 +2149,10 @@ async function ensurePersonnelOfficer(req, res, next) {
     if (isSeniorAdmin(req.user.id)) {
         const q = String(req.query.sector || req.body?.sector || (req.flashAs && req.flashAs.sector) || "").trim();
         if (!q || !CONFIG.SECTORS[q]) return res.status(400).json({ error: "حدد قطاع صحيح" });
-        req.sectorInfo = { sector: q, sectorLabel: CONFIG.SECTORS[q] };
+        req.sectorInfo = { sector: q, sectorLabel: CONFIG.SECTORS[q], kind: String(req.query.kind || (req.body && req.body.kind) || "po") === "oo" ? "oo" : "po" };
         return next();
     }
-    return res.status(403).json({ error: "هذا القسم لمسؤول الأفراد فقط" });
+    return res.status(403).json({ error: "هذا القسم لمسؤول الأفراد/الضباط فقط" });
 }
 
 async function ensureMPLeader(req, res, next) {
@@ -2162,13 +2161,13 @@ async function ensureMPLeader(req, res, next) {
     const role = getMPRole(req.user.id, settings);
     if (role) { req.mpRole = role; req.settings = settings; return next(); }
     if (isSeniorAdmin(req.user.id)) { req.mpRole = "senior"; req.settings = settings; return next(); }
-    return res.status(403).json({ error: "هذا القسم لقيادة الشرطة العسكرية فقط" });
+    return res.status(403).json({ error: "هذا القسم لقيادة الشؤون العسكرية فقط" });
 }
 async function ensureMPPersonnelOfficer(req, res, next) {
     if (!req.isAuthenticated()) return res.status(401).json({ error: "غير مسجّل دخول" });
     const settings = await getSettings();
     if (isMPPersonnelOfficer(req.user.id, settings) || isSeniorAdmin(req.user.id)) { req.settings = settings; return next(); }
-    return res.status(403).json({ error: "هذا القسم لمسؤول أفراد الشرطة العسكرية فقط" });
+    return res.status(403).json({ error: "هذا القسم لمسؤول أفراد الشؤون العسكرية فقط" });
 }
 async function ensureMPMember(req, res, next) {
     if (!req.isAuthenticated()) return res.status(401).json({ error: "غير مسجّل دخول" });
@@ -2177,7 +2176,7 @@ async function ensureMPMember(req, res, next) {
         req.settings = settings; return next();
     }
     const has = await isMilitaryPoliceMember(req.user.id);
-    if (!has) return res.status(403).json({ error: "هذا القسم لمنسوبي الشرطة العسكرية فقط" });
+    if (!has) return res.status(403).json({ error: "هذا القسم لمنسوبي الشؤون العسكرية فقط" });
     req.settings = settings;
     next();
 }
@@ -2202,7 +2201,7 @@ async function ensureJuniorInMySector(req, res, discordId) {
     if (!ids.includes(discordId)) { res.status(403).json({ error: "هذا الشخص ليس من أعضاء قطاعك" }); return null; }
     const p = await Personnel.findOne({ discord: discordId });
     if (!p) { res.status(404).json({ error: "غير موجود" }); return null; }
-    if (!isJuniorRank(p.rank)) { res.status(403).json({ error: "صلاحيتك تشمل رتبة رئيس رقباء وتحت فقط" }); return null; }
+    if (!inPoScope(req.sectorInfo, p.rank)) { res.status(403).json({ error: req.sectorInfo && req.sectorInfo.kind === "oo" ? "صلاحيتك تشمل الضباط (ملازم إلى فريق أول) فقط" : "صلاحيتك تشمل رتبة رئيس رقباء وتحت فقط" }); return null; }
     return p;
 }
 
@@ -2391,7 +2390,6 @@ app.get("/api/me", ensureAuth, async (req, res) => {
     if (settings.ownerLockdown && !isOwnerUid(req.user.id)) {
         return res.json({ blocked: true, reason: "🚨 الموقع مغلق حالياً من قبل الإدارة العليا، حاول بعد شوي." });
     }
-    let isAntiDrugs = false;
     await autoEndActiveLeave(req.user.id).catch(e => console.error("❌ فشل فحص إنهاء الإجازة التلقائي:", e.message));
 
     if (!senior) {
@@ -2405,10 +2403,6 @@ app.get("/api/me", ensureAuth, async (req, res) => {
         if (!check.ok) {
             return res.json({ blocked: true, reason: "هذا الموقع مخصص لمنسوبي الجهات العسكرية فقط" });
         }
-        isAntiDrugs = !!check.isAntiDrugs;
-    } else {
-        const check = await isMilitary(req.user.id);
-        isAntiDrugs = !!check.isAntiDrugs;
     }
 
     let p = await Personnel.findOne({ discord: req.user.id });
@@ -2434,6 +2428,7 @@ app.get("/api/me", ensureAuth, async (req, res) => {
         const sec = (settings.sectorLeadership && settings.sectorLeadership[sectorInfo.sector]) || {};
         sectorInfo.personnelOfficerId = sec.personnelOfficerId || null;
         sectorInfo.personnelOfficerName = sec.personnelOfficerName || null;
+        sectorInfo.officersOfficerName = sec.officersOfficerName || null;
         if (sectorInfo.role === "commander" || sectorInfo.role === "deputy") {
             const lastCheck = agingNoteCheckThrottle.get(sectorInfo.sector);
             if (!lastCheck || Date.now() - lastCheck > AGING_CHECK_COOLDOWN_MS) {
@@ -2452,12 +2447,19 @@ app.get("/api/me", ensureAuth, async (req, res) => {
         role: mpRole,
         label: mpRole === "commander" ? settings.mpLeadership?.commanderName : settings.mpLeadership?.deputyName,
     } : null;
+    let myVehicles = [];
+    if (p.rank) {
+        const vds = await Vehicle.find({ rank: p.rank }, { name: 1 }).sort({ name: 1 }).lean();
+        for (const vd of vds) myVehicles.push({ id: String(vd._id), name: vd.name, hasPhoto: !!(await Vehicle.exists({ _id: vd._id, photo: { $nin: [null, ""] } })) });
+    }
+    const canViolation = senior || isSectorOfficial(req.user.id, settings);
+    const canMilViolation = canViolation || isMilitaryPolice;
+    const milViolReviewer = senior || !!mpRole || mpPersonnelOfficer;
     const summon = (p.summon && p.summon.status !== "none") ? {
         status: p.summon.status, mode: p.summon.mode, timeLabel: p.summon.timeLabel,
         unlockAt: p.summon.unlockAt, enteredAt: p.summon.enteredAt,
     } : null;
 
-    const recState = (isReceptionOfficer(req.user.id, settings) || senior) ? await getReceptionState() : { open: null };
     const [meAtt, meCourt, meCyber, meDevLocked, meUnassigned, meAcc] = await Promise.all([
         getAttState(req.user.id),
         courtRole(req.user.id),
@@ -2470,8 +2472,6 @@ app.get("/api/me", ensureAuth, async (req, res) => {
     res.json({
         blocked: false,
         att: meAtt, attRequired: attRequired(req.user.id),
-        isReceptionOfficer: isReceptionOfficer(req.user.id, settings) || senior,
-        receptionOpen: recState.open,
         courtStaff: meCourt.staff, courtLeader: meCourt.leader, courtLocked: !!courtCaseOf(req.user.id), courtCase: courtCaseOf(req.user.id), courtSoon: courtSoonOf(req.user.id),
         discordId: req.user.id,
         discordTag: req.user.username,
@@ -2490,12 +2490,12 @@ app.get("/api/me", ensureAuth, async (req, res) => {
         isAdmin,
         isSeniorAdmin: senior,
         isTrainer: Array.isArray(settings.officerTrainers) && settings.officerTrainers.includes(req.user.id),
-        isAntiDrugs,
         sectorInfo,
         personnelOfficerInfo,
         mpInfo,
         mpPersonnelOfficer,
         isMilitaryPolice,
+        canViolation, canMilViolation, milViolReviewer, myVehicles,
         isHighCommand: isHighCommand(req.user.id, settings),
         cyber: meCyber,
         cyberLocked: underInvestigation.has(req.user.id),
@@ -2543,10 +2543,11 @@ app.post("/api/violations/submit", ensureAuth, async (req, res) => {
     try {
         const settings = await getSettings();
         if (settings.disableViolations) return res.status(403).json({ error: "تسجيل المخالفات مغلق حالياً" });
+        if (!(isSeniorAdmin(req.user.id) || isSectorOfficial(req.user.id, settings))) return res.status(403).json({ error: "تسجيل المخالفات لمسؤولي القطاعات فقط" });
         const p = await Personnel.findOne({ discord: req.user.id });
         if (!p || !p.registeredName || !p.unit) return res.status(400).json({ error: "أكمل بياناتك (الاسم واليونت) أولاً" });
         if (p.isBlocked) return res.status(403).json({ error: "أنت موقوف عن تسجيل مخالفات جديدة" });
-        if (isSummonBlocking(p)) return res.status(403).json({ error: "🚨 عليك استدعاء نشط من الشرطة العسكرية، لازم تدخل الاستدعاء أولاً قبل أي إجراء بالموقع" });
+        if (isSummonBlocking(p)) return res.status(403).json({ error: "🚨 عليك استدعاء نشط من الشؤون العسكرية، لازم تدخل الاستدعاء أولاً قبل أي إجراء بالموقع" });
 
         const pendingCount = await Violation.countDocuments({ reporterDiscord: req.user.id, status: "pending" });
         if (pendingCount >= CONFIG.MAX_PENDING_ITEMS) {
@@ -2582,6 +2583,100 @@ app.post("/api/violations/submit", ensureAuth, async (req, res) => {
         violationLocks.delete(req.user.id);
     }
 });
+
+
+// ============================================================
+//  🪖 المخالفات العسكرية: مسؤول القطاع / الشؤون العسكرية يسجّل مخالفة (كتابة) على عسكري،
+//  وبعد قبول قيادة الشؤون العسكرية (أو الكبار) تنسجّل في ملفه كملاحظة
+// ============================================================
+const MilViolation = mongoose.model("MilViolation", new mongoose.Schema({
+    reporterDiscord: String, reporterTag: String, reporterName: String, reporterRank: String,
+    targetDiscord: String, targetTag: String, targetName: String, targetRank: String,
+    text: String,
+    status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
+    rejectReason: { type: String, default: null },
+    reviewedBy: String, reviewedByTag: String, reviewedByName: String, reviewedAt: Date,
+    createdAt: { type: Date, default: Date.now },
+}));
+async function milViolCaps(uid) {
+    const settings = await getSettings();
+    const senior = isSeniorAdmin(uid);
+    const official = isSectorOfficial(uid, settings);
+    const mpRole = getMPRole(uid, settings), mpPO = isMPPersonnelOfficer(uid, settings);
+    const mpMember = !!(mpRole || mpPO) || await isMilitaryPoliceMember(uid);
+    return { settings, senior, canSubmit: senior || official || mpMember, canReview: senior || !!mpRole || mpPO };
+}
+app.get("/api/milviol/people", ensureAuth, async (req, res) => {
+    const c = await milViolCaps(req.user.id);
+    if (!c.canSubmit) return res.status(403).json({ error: "تسجيل المخالفة العسكرية لمسؤولي القطاعات والشؤون العسكرية فقط" });
+    const accs = await Account.find({ status: "approved" }, { uid: 1, isOwner: 1 }).limit(8000).maxTimeMS(15000).lean();
+    const ok = new Set(accs.filter(a => !a.isOwner && !isOwnerUid(a.uid)).map(a => a.uid));
+    const ps = await Personnel.find({ registeredName: { $nin: [null, ""] } }, { discord: 1, registeredName: 1, rank: 1, unit: 1, cardNumber: 1 }).limit(8000).maxTimeMS(15000).lean();
+    const list = ps.filter(x => ok.has(x.discord) && x.discord !== req.user.id)
+        .sort((a, b) => (rankIndex(b.rank) - rankIndex(a.rank)) || String(a.registeredName).localeCompare(String(b.registeredName), "ar"))
+        .map(x => ({ discord: x.discord, name: x.registeredName, rank: x.rank, unit: x.unit || "", card: x.cardNumber || "" }));
+    res.json({ list });
+});
+app.post("/api/milviol/submit", ensureAuth, async (req, res) => {
+    const c = await milViolCaps(req.user.id);
+    if (!c.canSubmit) return res.status(403).json({ error: "تسجيل المخالفة العسكرية لمسؤولي القطاعات والشؤون العسكرية فقط" });
+    const { targetDiscord, text } = req.body || {};
+    if (!targetDiscord || !text || !String(text).trim()) return res.status(400).json({ error: "اختر العسكري واكتب المخالفة" });
+    const t = String(text).trim();
+    if (t.length < 3 || t.length > 1000) return res.status(400).json({ error: "المخالفة لازم تكون بين 3 و 1000 حرف" });
+    if (targetDiscord === req.user.id) return res.status(400).json({ error: "ما تقدر تسجّل مخالفة على نفسك" });
+    const target = await Personnel.findOne({ discord: targetDiscord });
+    if (!target || !target.registeredName || isOwnerUid(targetDiscord)) return res.status(404).json({ error: "العسكري غير موجود" });
+    const pend = await MilViolation.countDocuments({ reporterDiscord: req.user.id, status: "pending" });
+    if (pend >= CONFIG.MAX_PENDING_ITEMS) return res.status(429).json({ error: `عندك ${CONFIG.MAX_PENDING_ITEMS} مخالفات عسكرية بانتظار المراجعة، انتظر ردهم أول` });
+    const me = await Personnel.findOne({ discord: req.user.id });
+    const doc = await MilViolation.create({
+        reporterDiscord: req.user.id, reporterTag: req.user.username, reporterName: (me && me.registeredName) || req.user.username, reporterRank: (me && me.rank) || "-",
+        targetDiscord, targetTag: target.discordTag, targetName: target.registeredName, targetRank: target.rank, text: t,
+    });
+    await logEvent({ action: "تسجيل مخالفة عسكرية", discordId: targetDiscord, discordTag: target.discordTag, actorId: req.user.id, actorTag: req.user.username, details: `على ${target.registeredName}: ${t.slice(0, 200)} — بانتظار المراجعة` });
+    res.json({ ok: true, id: doc._id });
+});
+app.get("/api/milviol/mine", ensureAuth, async (req, res) => {
+    const list = await MilViolation.find({ reporterDiscord: req.user.id }).sort({ createdAt: -1 }).limit(50).lean();
+    res.json({ list });
+});
+app.get("/api/milviol/review-list", ensureAuth, async (req, res) => {
+    const c = await milViolCaps(req.user.id);
+    if (!c.canReview) return res.status(403).json({ error: "المراجعة لقيادة الشؤون العسكرية والكبار فقط" });
+    const pq = { status: "pending" };
+    if (!c.senior) pq.reporterDiscord = { $ne: req.user.id };
+    const pending = await MilViolation.find(pq).sort({ createdAt: -1 }).limit(200).lean();
+    const recent = await MilViolation.find({ status: { $ne: "pending" } }).sort({ reviewedAt: -1 }).limit(60).lean();
+    res.json({ pending, recent });
+});
+async function milViolDecide(req, res, approve) {
+    const c = await milViolCaps(req.user.id);
+    if (!c.canReview) return res.status(403).json({ error: "المراجعة لقيادة الشؤون العسكرية والكبار فقط" });
+    const r = await MilViolation.findById(req.params.id);
+    if (!r || r.status !== "pending") return res.status(404).json({ error: "غير موجودة أو انراجعت" });
+    if (!c.senior && r.reporterDiscord === req.user.id) return res.status(403).json({ error: "ما تقدر تراجع مخالفة سجلتها بنفسك" });
+    let reason = null;
+    if (!approve) {
+        reason = String((req.body && req.body.reason) || "").trim();
+        if (!reason) return res.status(400).json({ error: "اكتب سبب الرفض" });
+    }
+    const rev = await Personnel.findOne({ discord: req.user.id }, { registeredName: 1 }).lean();
+    r.status = approve ? "approved" : "rejected"; r.rejectReason = reason;
+    r.reviewedBy = req.user.id; r.reviewedByTag = req.user.username; r.reviewedByName = (rev && rev.registeredName) || req.user.username; r.reviewedAt = new Date();
+    await r.save();
+    if (approve) {
+        await Personnel.updateOne({ discord: r.targetDiscord }, { $push: { notes: { text: "🪖 مخالفة عسكرية: " + r.text + " — سجّلها " + r.reporterName, image: null, addedBy: req.user.id, addedByTag: req.user.username + " (الشؤون العسكرية)" } } });
+        await pushNoticeTo(r.targetDiscord, "🪖 انسجلت عليك مخالفة عسكرية: " + r.text, req.user.id, req.user.username);
+        await pushNoticeTo(r.reporterDiscord, "✅ انقبلت مخالفتك العسكرية على " + r.targetName + " وانسجلت في ملفه.", req.user.id, req.user.username);
+    } else {
+        await pushNoticeTo(r.reporterDiscord, "❌ انرفضت مخالفتك العسكرية على " + r.targetName + " — السبب: " + reason, req.user.id, req.user.username);
+    }
+    await logEvent({ action: approve ? "قبول مخالفة عسكرية" : "رفض مخالفة عسكرية", discordId: r.targetDiscord, discordTag: r.targetTag, actorId: req.user.id, actorTag: req.user.username, details: `${r.targetName}: ${r.text.slice(0, 200)}` + (reason ? " — السبب: " + reason : "") });
+    res.json({ ok: true });
+}
+app.post("/api/milviol/:id/approve", ensureAuth, (req, res) => milViolDecide(req, res, true));
+app.post("/api/milviol/:id/reject", ensureAuth, (req, res) => milViolDecide(req, res, false));
 
 app.get("/api/violations/mine", ensureAuth, async (req, res, next) => {
     try {
@@ -2795,76 +2890,6 @@ app.post("/api/notes/:discord/:noteId/extend-review", ensureAuth, async (req, re
     res.json({ ok: true });
 });
 
-const reportLocks = new Set();
-app.post("/api/reports/submit", ensureAntiDrugsRole, async (req, res) => {
-    if (reportLocks.has(req.user.id)) {
-        return res.status(429).json({ error: "في تقرير قيد الإرسال حالياً على حسابك، انتظر لحظة." });
-    }
-    reportLocks.add(req.user.id);
-    try {
-        const settings = await getSettings();
-        if (settings.disableViolations) return res.status(403).json({ error: "تسجيل التقارير مغلق حالياً" });
-        const p = await Personnel.findOne({ discord: req.user.id });
-        if (!p || !p.registeredName || !p.unit) return res.status(400).json({ error: "أكمل بياناتك (الاسم واليونت) أولاً" });
-        if (p.isBlocked) return res.status(403).json({ error: "أنت موقوف عن تسجيل تقارير جديدة" });
-        if (isSummonBlocking(p)) return res.status(403).json({ error: "🚨 عليك استدعاء نشط من الشرطة العسكرية، لازم تدخل الاستدعاء أولاً قبل أي إجراء بالموقع" });
-
-        const {
-            category, suspectName, arrestLocation, vehicle,
-            stopReason, securityActions, photo, items,
-        } = req.body;
-
-        if (!category || !["جنائي", "مخدرات"].includes(category)) {
-            return res.status(400).json({ error: "حدد نوع التقرير (جنائي أو مخدرات)" });
-        }
-        if (!suspectName || !arrestLocation) return res.status(400).json({ error: "أكمل اسم المتهم وموقع الضبط" });
-        if (!vehicle) return res.status(400).json({ error: "اختر المركبة" });
-        if (!stopReason) return res.status(400).json({ error: "أكمل تفاصيل العملية الميدانية" });
-        if (!photo) return res.status(400).json({ error: "لازم ترفق صورة المركبة" });
-        if (photo.length > CONFIG.MAX_PHOTO_MB * 1024 * 1024 * 1.4) {
-            return res.status(400).json({ error: `الصورة أكبر من ${CONFIG.MAX_PHOTO_MB}MB` });
-        }
-        if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "أضف مخالفة واحدة على الأقل" });
-        if (items.length > 5) return res.status(400).json({ error: "الحد الأقصى 5 مخالفات لكل تقرير" });
-        for (const it of items) {
-            if (category === "مخدرات") {
-                if (!it.drugType || !it.drugQuantity || !it.concealMethod) return res.status(400).json({ error: "أكمل نوع المخدر وكميته وطريقة إخفائه لكل مخالفة" });
-            } else {
-                if (!it.seizedItems) return res.status(400).json({ error: "اكتب المضبوطات لكل مخالفة" });
-            }
-        }
-
-        const pendingCount = await Violation.countDocuments({ reporterDiscord: req.user.id, status: "pending" });
-        if (pendingCount + items.length > CONFIG.MAX_PENDING_ITEMS) {
-            return res.status(429).json({ error: `عندك ${pendingCount} مخالفة/تقرير معلّق حالياً، وهذا التقرير فيه ${items.length} — بيتجاوز الحد الأقصى (${CONFIG.MAX_PENDING_ITEMS}). لازم الإدارة تراجع بعضها أولاً.` });
-        }
-
-        const cleanActions = Array.isArray(securityActions) ? securityActions.map(a => String(a).trim()).filter(Boolean) : [];
-        const vehicleDoc = await Vehicle.findOne({ name: vehicle });
-
-        const created = [];
-        for (const it of items) {
-            const v = await Violation.create({
-                reporterDiscord: req.user.id, reporterTag: req.user.username,
-                reporterName: p.registeredName, reporterUnit: p.unit,
-                kind: "report", reportCategory: category,
-                suspectName, arrestLocation, vehicle, vehiclePhoto: vehicleDoc?.photo || null,
-                stopReason, securityActions: cleanActions,
-                seizedItems: category === "جنائي" ? it.seizedItems : null,
-                drugType: category === "مخدرات" ? it.drugType : null,
-                drugQuantity: category === "مخدرات" ? it.drugQuantity : null,
-                concealMethod: category === "مخدرات" ? it.concealMethod : null,
-                plateNumber: generatePlate(), status: "pending",
-            });
-            await postViolationToChannel(v, photo);
-            created.push(v);
-        }
-        res.json({ ok: true, count: created.length, reports: created });
-    } finally {
-        reportLocks.delete(req.user.id);
-    }
-});
-
 app.get("/api/admin/pending", ensureSeniorAdmin, async (req, res) => {
     const list = await Violation.aggregate([
         { $match: { status: "pending" } },
@@ -2915,10 +2940,9 @@ app.get("/api/senior/personnel/:discord/file", ensureSeniorAdmin, async (req, re
     const p = await Personnel.findOne({ discord: req.params.discord });
     if (!p) return res.status(404).json({ error: "غير موجود" });
     const progress = await rankProgress(p, await getSettings());
-    const [acc, att, recRows] = await Promise.all([
+    const [acc, att] = await Promise.all([
         Account.findOne({ uid: p.discord }).lean(),
         AttStatus.findOne({ uid: p.discord }).lean(),
-        RecRow.find({ uid: p.discord }).sort({ openedAt: -1, dayKey: -1 }).limit(300).lean(),
     ]);
     let account = null;
     if (acc) {
@@ -2932,14 +2956,7 @@ app.get("/api/senior/personnel/:discord/file", ensureSeniorAdmin, async (req, re
         };
     }
     const attendance = att ? { status: att.status, lastCheckInAt: att.lastCheckInAt || null, lastCheckOutAt: att.lastCheckOutAt || null } : null;
-    const receipts = recRows.map(r => ({ dayKey: r.dayKey, openedAt: r.openedAt, kind: r.kind, gained: r.gained || 0, deducted: r.deducted || 0, refunded: r.refunded || 0, excuseStatus: r.excuseStatus || "none", removed: !!r.removedAt }));
-    const receiptStats = {
-        total: receipts.length,
-        attended: receipts.filter(r => r.kind === "attended").length,
-        absent: receipts.filter(r => r.kind === "absent").length,
-        leave: receipts.filter(r => r.kind === "leave").length,
-    };
-    res.json({ personnel: p, progress, account, attendance, receipts, receiptStats });
+    res.json({ personnel: p, progress, account, attendance });
 });
 
 app.post("/api/senior/personnel/:discord/note", ensureSeniorAdmin, async (req, res) => {
@@ -3390,7 +3407,7 @@ app.post("/api/points/edit/:discord", ensurePointsEditor, async (req, res) => {
         const leaderInfo = getSectorRole(req.user.id, settingsPE);
         const info = leaderInfo || getPersonnelOfficerSector(req.user.id, settingsPE);
         if (!info) return res.status(403).json({ error: "ليست لديك صلاحية تعديل النقاط" });
-        const roleLabel = leaderInfo ? (leaderInfo.role === "commander" ? "قائد" : "نائب") : "مسؤول أفراد";
+        const roleLabel = leaderInfo ? (leaderInfo.role === "commander" ? "قائد" : "نائب") : poRoleLabel(info);
         const tagFull = req.user.username + ` (${roleLabel} ${info.sectorLabel})`;
         const doc = await PromotionRequest.create({
             kind: "points", sector: info.sector, sectorLabel: info.sectorLabel,
@@ -3493,7 +3510,7 @@ async function decideLeaveRequest(id, userId, userTag, decision, member) {
         const poInfo = getPersonnelOfficerSector(userId, settings);
         let approverLabel = null;
         if (leaderInfo && leaderInfo.sector === leave.sector) approverLabel = leaderInfo.role === "commander" ? "قائد القطاع" : "نائب القطاع";
-        else if (poInfo && poInfo.sector === leave.sector && isJuniorRank(leave.rank)) approverLabel = "مسؤول الأفراد";
+        else if (poInfo && poInfo.sector === leave.sector && inPoScope(poInfo, leave.rank)) approverLabel = poInfo.kind === "oo" ? "مسؤول الضباط" : "مسؤول الأفراد";
         else if (isSeniorAdmin(userId)) approverLabel = "كبار المسؤولين";
         else if (CONFIG.LEAVE_REVIEWER_ROLE_ID && member && member.roles && member.roles.cache && member.roles.cache.has(CONFIG.LEAVE_REVIEWER_ROLE_ID)) approverLabel = "مسؤول الإجازات";
         else return { error: "ما عندك صلاحية على هذا الطلب" };
@@ -3544,7 +3561,7 @@ app.post("/api/leave/request", ensureAuth, async (req, res) => {
 
     const p = await Personnel.findOne({ discord: req.user.id });
     if (!p || !p.registeredName) return res.status(400).json({ error: "أكمل بياناتك بالموقع أولاً" });
-    if (isSummonBlocking(p)) return res.status(403).json({ error: "🚨 عليك استدعاء نشط من الشرطة العسكرية، لازم تدخل الاستدعاء أولاً قبل أي إجراء بالموقع" });
+    if (isSummonBlocking(p)) return res.status(403).json({ error: "🚨 عليك استدعاء نشط من الشؤون العسكرية، لازم تدخل الاستدعاء أولاً قبل أي إجراء بالموقع" });
     const balance = p.leaveBalance ?? CONFIG.DEFAULT_LEAVE_BALANCE;
     if (d > balance) return res.status(400).json({ error: `رصيدك الحالي ${balance} يوم فقط، ما يكفي لهذا الطلب` });
 
@@ -3595,7 +3612,7 @@ app.get("/api/leave/pending", ensureAuth, async (req, res) => {
 
     let list = await LeaveRequest.find(query).sort({ createdAt: -1 }).limit(100).lean();
     if (poInfo && !leaderInfo) {
-        list = list.filter(l => isJuniorRank(l.rank));
+        list = list.filter(l => inPoScope(poInfo, l.rank));
     }
     res.json({ list });
 });
@@ -3615,8 +3632,8 @@ app.post("/api/leave/:id/approve", ensureAuth, async (req, res) => {
     let approverLabel = null;
     if (leaderInfo && leaderInfo.sector === leave.sector) {
         approverLabel = leaderInfo.role === "commander" ? "قائد القطاع" : "نائب القطاع";
-    } else if (poInfo && poInfo.sector === leave.sector && isJuniorRank(leave.rank)) {
-        approverLabel = "مسؤول الأفراد";
+    } else if (poInfo && poInfo.sector === leave.sector && inPoScope(poInfo, leave.rank)) {
+        approverLabel = poInfo.kind === "oo" ? "مسؤول الضباط" : "مسؤول الأفراد";
     } else if (isSeniorAdmin(req.user.id)) {
         approverLabel = "كبار المسؤولين";
     } else {
@@ -3652,7 +3669,7 @@ app.post("/api/leave/:id/end", ensureAuth, async (req, res) => {
     const poInfo = getPersonnelOfficerSector(req.user.id, settings);
     let approverLabel = null;
     if (leaderInfo && leaderInfo.sector === leave.sector) approverLabel = leaderInfo.role === "commander" ? "قائد القطاع" : "نائب القطاع";
-    else if (poInfo && poInfo.sector === leave.sector && isJuniorRank(leave.rank)) approverLabel = "مسؤول الأفراد";
+    else if (poInfo && poInfo.sector === leave.sector && inPoScope(poInfo, leave.rank)) approverLabel = poInfo.kind === "oo" ? "مسؤول الضباط" : "مسؤول الأفراد";
     else if (isSeniorAdmin(req.user.id)) approverLabel = "كبار المسؤولين";
     else return res.status(403).json({ error: "ليست لديك صلاحية إنهاء هذه الإجازة" });
 
@@ -3671,7 +3688,7 @@ app.delete("/api/leave/:id", ensureAuth, async (req, res) => {
     const poInfo = getPersonnelOfficerSector(req.user.id, settings);
     let approverLabel = null;
     if (leaderInfo && leaderInfo.sector === leave.sector) approverLabel = leaderInfo.role === "commander" ? "قائد القطاع" : "نائب القطاع";
-    else if (poInfo && poInfo.sector === leave.sector && isJuniorRank(leave.rank)) approverLabel = "مسؤول الأفراد";
+    else if (poInfo && poInfo.sector === leave.sector && inPoScope(poInfo, leave.rank)) approverLabel = poInfo.kind === "oo" ? "مسؤول الضباط" : "مسؤول الأفراد";
     else if (isSeniorAdmin(req.user.id)) approverLabel = "كبار المسؤولين";
     else return res.status(403).json({ error: "ليست لديك صلاحية" });
 
@@ -3699,7 +3716,7 @@ app.post("/api/leave/:id/reject", ensureAuth, async (req, res) => {
     const poInfo = getPersonnelOfficerSector(req.user.id, settings);
     let approverLabel = null;
     if (leaderInfo && leaderInfo.sector === leave.sector) approverLabel = leaderInfo.role === "commander" ? "قائد القطاع" : "نائب القطاع";
-    else if (poInfo && poInfo.sector === leave.sector && isJuniorRank(leave.rank)) approverLabel = "مسؤول الأفراد";
+    else if (poInfo && poInfo.sector === leave.sector && inPoScope(poInfo, leave.rank)) approverLabel = poInfo.kind === "oo" ? "مسؤول الضباط" : "مسؤول الأفراد";
     else if (isSeniorAdmin(req.user.id)) approverLabel = "كبار المسؤولين";
     else return res.status(403).json({ error: "ليست لديك صلاحية" });
 
@@ -3904,6 +3921,23 @@ app.post("/api/senior/vehicles", ensureSeniorAdmin, async (req, res) => {
     } catch (e) { res.status(400).json({ error: "المركبة موجودة مسبقاً" }); }
 });
 
+app.post("/api/senior/vehicles/:id/rank", ensureSeniorAdmin, async (req, res) => {
+    const rank = String((req.body && req.body.rank) || "").trim();
+    if (rank && !CONFIG.MILITARY_RANKS.includes(rank)) return res.status(400).json({ error: "رتبة غير صحيحة" });
+    const v = await Vehicle.findByIdAndUpdate(req.params.id, { $set: { rank: rank || null } }, { new: true });
+    if (!v) return res.status(404).json({ error: "المركبة غير موجودة" });
+    await logEvent({ action: "رتبة مخصصة لمركبة", actorId: req.user.id, actorTag: req.user.username, details: `${v.name} ← ${rank || "بدون رتبة"}` });
+    res.json({ ok: true, rank: v.rank });
+});
+app.get("/api/vehicle/:id/img", ensureAuth, async (req, res) => {
+    try {
+        const v = await Vehicle.findById(req.params.id, { photo: 1 }).lean();
+        if (!v || !v.photo) return res.status(404).end();
+        const m = /^data:(image\/[a-z+]+);base64,(.+)$/s.exec(v.photo);
+        if (m) { res.set("Content-Type", m[1]); res.set("Cache-Control", "private, max-age=3600"); return res.send(Buffer.from(m[2], "base64")); }
+        return res.redirect(v.photo);
+    } catch (e) { res.status(404).end(); }
+});
 app.delete("/api/senior/vehicles/:id", ensureSeniorAdmin, async (req, res) => {
     await Vehicle.findByIdAndDelete(req.params.id);
     res.json({ ok: true });
@@ -4040,7 +4074,7 @@ app.get("/api/owner/online", ensureAuth, async (req, res) => {
             uid: a.uid,
             name: a.fullName || p.registeredName || a.email,
             email: a.email,
-            sector: (a.sector && CONFIG.SECTORS[a.sector]) || (a.isMP ? "الشرطة العسكرية" : null),
+            sector: (a.sector && CONFIG.SECTORS[a.sector]) || (a.isMP ? "الشؤون العسكرية" : null),
             unit: p.unit || null,
             isSenior: !!a.isSenior, isOwner: !!a.isOwner,
             lastAction: l ? l.action : null, lastDetails: l ? l.details : null, lastAt: l ? l.at : null,
@@ -4182,7 +4216,7 @@ app.get("/api/senior/sectors", ensureSeniorAdmin, async (req, res) => {
     res.json({ sectors: CONFIG.SECTORS, leadership: settings.sectorLeadership || {}, mpLeadership: settings.mpLeadership || {}, violationsOfficer: { id: settings.violationsOfficerId || null, name: settings.violationsOfficerName || null }, violationsOfficers: getViolationsOfficers(settings) });
 });
 
-const SECTOR_ROLE_LABELS = { commander: "قائد", deputy: "نائب", personnelOfficer: "مسؤول أفراد" };
+const SECTOR_ROLE_LABELS = { commander: "قائد", deputy: "نائب", personnelOfficer: "مسؤول أفراد", officersOfficer: "مسؤول ضباط" };
 
 app.post("/api/senior/sectors/:sector/assign", ensureSeniorAdmin, async (req, res) => {
     const { sector } = req.params;
@@ -4190,6 +4224,8 @@ app.post("/api/senior/sectors/:sector/assign", ensureSeniorAdmin, async (req, re
     if (!CONFIG.SECTORS[sector]) return res.status(400).json({ error: "قطاع غير معروف" });
     if (!SECTOR_ROLE_LABELS[role]) return res.status(400).json({ error: "دور غير معروف" });
     if (sector === "cyber" && role === "personnelOfficer") return res.status(400).json({ error: "الأمن السيبراني ما يكون له مسؤول أفراد" });
+    if (sector === "ssf" && role === "personnelOfficer") return res.status(400).json({ error: "SSF ما يكون له مسؤول أفراد" });
+    if (role === "officersOfficer" && sector !== "lsbd") return res.status(400).json({ error: "مسؤول الضباط خاص بـ LSBD فقط" });
     if (!discordId || !discordId.trim()) return res.status(400).json({ error: "حدد الشخص" });
 
     const person = await Personnel.findOne({ discord: discordId.trim() });
@@ -4492,8 +4528,37 @@ app.post("/api/sector/personnel/:discord/note", ensureSectorLeader, async (req, 
     res.json({ ok: true, notes: p.notes });
 });
 
+app.post("/api/sector/officers-officer/assign", ensureSectorLeader, async (req, res) => {
+    if (req.sectorInfo.sector !== "lsbd") return res.status(400).json({ error: "مسؤول الضباط خاص بـ LSBD فقط" });
+    const { discordId } = req.body;
+    if (!discordId || !discordId.trim()) return res.status(400).json({ error: "حدد الشخص" });
+    const person = await Personnel.findOne({ discord: discordId.trim() });
+    if (!person || !person.registeredName) return res.status(400).json({ error: "لازم يكون هذا الشخص مسجل بالموقع (أكمل بياناته) قبل تعيينه" });
+    const settings = await getSettings();
+    if (!settings.sectorLeadership) settings.sectorLeadership = {};
+    if (!settings.sectorLeadership.lsbd) settings.sectorLeadership.lsbd = {};
+    const displayName = person.registeredName || person.discordTag || person.discord;
+    settings.sectorLeadership.lsbd.officersOfficerId = person.discord;
+    settings.sectorLeadership.lsbd.officersOfficerName = displayName;
+    settings.markModified("sectorLeadership");
+    await settings.save();
+    await logEvent({ action: "تعيين مسؤول ضباط", discordId: person.discord, discordTag: person.discordTag, actorId: req.user.id, actorTag: req.user.username, details: `${req.sectorInfo.sectorLabel} — ${displayName}` });
+    res.json({ ok: true, sectorLeadership: settings.sectorLeadership });
+});
+app.post("/api/sector/officers-officer/remove", ensureSectorLeader, async (req, res) => {
+    const settings = await getSettings();
+    const sec = settings.sectorLeadership && settings.sectorLeadership[req.sectorInfo.sector];
+    if (!sec || !sec.officersOfficerId) return res.json({ ok: true });
+    const removedName = sec.officersOfficerName;
+    sec.officersOfficerId = null; sec.officersOfficerName = null;
+    settings.markModified("sectorLeadership");
+    await settings.save();
+    await logEvent({ action: "إزالة مسؤول ضباط", actorId: req.user.id, actorTag: req.user.username, details: `${req.sectorInfo.sectorLabel} — ${removedName || "-"}` });
+    res.json({ ok: true });
+});
 app.post("/api/sector/personnel-officer/assign", ensureSectorLeader, async (req, res) => {
     if (req.sectorInfo.sector === "cyber") return res.status(400).json({ error: "الأمن السيبراني ما يكون له مسؤول أفراد" });
+    if (req.sectorInfo.sector === "ssf") return res.status(400).json({ error: "SSF ما يكون له مسؤول أفراد" });
     const { discordId } = req.body;
     if (!discordId || !discordId.trim()) return res.status(400).json({ error: "حدد الشخص" });
     const person = await Personnel.findOne({ discord: discordId.trim() });
@@ -4780,7 +4845,7 @@ app.get("/api/personnel-officer/members", ensurePersonnelOfficer, async (req, re
     await ensureCardNumbers();
     const ids = await getSectorMemberIds(req.sectorInfo.sector);
     if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء القطاع من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
-    const juniorRanks = CONFIG.MILITARY_RANKS.filter(isJuniorRank);
+    const juniorRanks = CONFIG.MILITARY_RANKS.filter(r => inPoScope(req.sectorInfo, r));
     const list = ids.length ? await Personnel.find({ discord: { $in: ids }, rank: { $in: juniorRanks } }, { "notes.image": 0 }).sort({ createdAt: -1 }) : [];
     res.json({ list, sector: req.sectorInfo.sector, sectorLabel: req.sectorInfo.sectorLabel });
 });
@@ -4799,13 +4864,13 @@ app.post("/api/personnel-officer/personnel/:discord/note", ensurePersonnelOffice
     if (image.length > CONFIG.MAX_PHOTO_MB * 1024 * 1024 * 1.4) return res.status(400).json({ error: `الصورة أكبر من ${CONFIG.MAX_PHOTO_MB}MB` });
     const settingsPO = await getSettings();
     if (needsHighCommandApproval(req.user.id, settingsPO)) {
-        const doc = await createNoteRequest({ req, info: req.sectorInfo, roleLabel: "مسؤول أفراد", discord: req.params.discord, text: text.trim(), image });
+        const doc = await createNoteRequest({ req, info: req.sectorInfo, roleLabel: poRoleLabel(req.sectorInfo), discord: req.params.discord, text: text.trim(), image });
         if (!doc) return res.status(404).json({ error: "غير موجود" });
         return res.json({ ok: true, pending: true });
     }
-    const p = await pushNoteWithImage({ discord: req.params.discord, text: text.trim(), image, actorId: req.user.id, actorTag: req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})` });
+    const p = await pushNoteWithImage({ discord: req.params.discord, text: text.trim(), image, actorId: req.user.id, actorTag: req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})` });
     if (!p) return res.status(404).json({ error: "غير موجود" });
-    await logEvent({ action: "إضافة ملاحظة", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})`, details: `على ${p.registeredName || p.discord}: ${text.trim()}` });
+    await logEvent({ action: "إضافة ملاحظة", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})`, details: `على ${p.registeredName || p.discord}: ${text.trim()}` });
     res.json({ ok: true, notes: p.notes });
 });
 
@@ -4822,7 +4887,7 @@ app.post("/api/personnel-officer/personnel/:discord/warn", ensurePersonnelOffice
         const { p, dismissed } = await issueWarning({
             targetDiscord: req.params.discord, kind: req.body.kind, reason: req.body.reason,
             pointsToDeduct: req.body.pointsToDeduct, penaltyType: req.body.penaltyType,
-            actorId: req.user.id, actorTag: req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})`,
+            actorId: req.user.id, actorTag: req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})`,
         });
         res.json({ ok: true, warnings: p.warnings, dismissed });
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -4843,11 +4908,11 @@ app.post("/api/personnel-officer/personnel/:discord/promotion-request", ensurePe
         sector: req.sectorInfo.sector, sectorLabel: req.sectorInfo.sectorLabel,
         targetDiscord: p.discord, targetTag: p.discordTag, targetName: p.registeredName,
         fromRank: p.rank, toRank: CONFIG.MILITARY_RANKS[newIdx], direction, reason: reason.trim(),
-        requestedBy: req.user.id, requestedByTag: req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})`, status: "pending",
+        requestedBy: req.user.id, requestedByTag: req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})`, status: "pending",
     });
     await logEvent({
         action: direction === "up" ? "طلب ترقية" : "طلب تنزيل", discordId: p.discord, discordTag: p.discordTag,
-        actorId: req.user.id, actorTag: req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})`,
+        actorId: req.user.id, actorTag: req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})`,
         details: `${p.rank} ← ${CONFIG.MILITARY_RANKS[newIdx]} — السبب: ${reason.trim()} — بانتظار القيادة العليا`,
     });
     announceApprovalRequest(doc);
@@ -4862,7 +4927,7 @@ app.get("/api/personnel-officer/requests", ensurePersonnelOfficer, async (req, r
 app.get("/api/personnel-officer/violations", ensurePersonnelOfficer, async (req, res) => {
     const ids = await getSectorMemberIds(req.sectorInfo.sector);
     if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء القطاع من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
-    const juniorRanks = CONFIG.MILITARY_RANKS.filter(isJuniorRank);
+    const juniorRanks = CONFIG.MILITARY_RANKS.filter(r => inPoScope(req.sectorInfo, r));
     const juniorIds = ids.length ? (await Personnel.find({ discord: { $in: ids }, rank: { $in: juniorRanks } }, "discord")).map(p => p.discord) : [];
     const list = juniorIds.length ? await Violation.aggregate([
         { $match: { reporterDiscord: { $in: juniorIds }, status: "pending" } },
@@ -4878,7 +4943,7 @@ app.post("/api/personnel-officer/violations/:id/approve", ensurePersonnelOfficer
     const v = await Violation.findById(req.params.id);
     if (!v || v.status !== "pending") return res.status(404).json({ error: "غير موجودة" });
     if (!(await ensureJuniorInMySector(req, res, v.reporterDiscord))) return;
-    const r = await approveViolation(v, req.user.id, req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})`);
+    const r = await approveViolation(v, req.user.id, req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})`);
     if (r.blocked) return res.status(403).json({ error: r.unassigned ? "🚫 لا يمكن قبول هذي المخالفة: حساب مقدّمها بدون رتبة أو قطاع" : r.investigation ? "🔒 هذا العسكري تحت التحقيق السيبراني، لا يمكن قبول مخالفاته حالياً" : "على هذا العسكري استدعاء نشط، لا يمكن قبول مخالفاته حتى ينتهي الاستدعاء" });
     res.json({ ok: true });
 });
@@ -4889,7 +4954,7 @@ app.post("/api/personnel-officer/violations/:id/reject", ensurePersonnelOfficer,
     const v = await Violation.findById(req.params.id);
     if (!v || v.status !== "pending") return res.status(404).json({ error: "غير موجودة" });
     if (!(await ensureJuniorInMySector(req, res, v.reporterDiscord))) return;
-    const r = await rejectViolation(v, req.user.id, req.user.username + ` (مسؤول أفراد ${req.sectorInfo.sectorLabel})`, reason.trim());
+    const r = await rejectViolation(v, req.user.id, req.user.username + ` (${poRoleLabel(req.sectorInfo)} ${req.sectorInfo.sectorLabel})`, reason.trim());
     if (r.blocked) return res.status(403).json({ error: r.investigation ? "🔒 هذا العسكري تحت التحقيق السيبراني، لا يمكن رفض مخالفاته حالياً" : "على هذا العسكري استدعاء نشط، لا يمكن رفض مخالفاته حتى ينتهي الاستدعاء" });
     res.json({ ok: true });
 });
@@ -4914,7 +4979,7 @@ app.post("/api/senior/mp/assign", ensureSeniorAdmin, async (req, res) => {
     settings.markModified("mpLeadership");
     await settings.save();
     await logEvent({
-        action: "تعيين " + MP_ROLE_LABELS[role] + " الشرطة العسكرية",
+        action: "تعيين " + MP_ROLE_LABELS[role] + " الشؤون العسكرية",
         discordId: person.discord, discordTag: person.discordTag,
         actorId: req.user.id, actorTag: req.user.username, details: displayName,
     });
@@ -4930,7 +4995,7 @@ app.post("/api/senior/mp/remove", ensureSeniorAdmin, async (req, res) => {
     settings.mpLeadership[role + "Name"] = null;
     settings.markModified("mpLeadership");
     await settings.save();
-    await logEvent({ action: "إزالة " + MP_ROLE_LABELS[role] + " الشرطة العسكرية", actorId: req.user.id, actorTag: req.user.username, details: removedName || "-" });
+    await logEvent({ action: "إزالة " + MP_ROLE_LABELS[role] + " الشؤون العسكرية", actorId: req.user.id, actorTag: req.user.username, details: removedName || "-" });
     res.json({ ok: true, mpLeadership: settings.mpLeadership });
 });
 
@@ -4945,7 +5010,7 @@ app.post("/api/mp/personnel-officer/assign", ensureMPLeader, async (req, res) =>
     settings.mpLeadership.personnelOfficerName = person.registeredName || person.discordTag || person.discord;
     settings.markModified("mpLeadership");
     await settings.save();
-    await logEvent({ action: "تعيين مسؤول أفراد الشرطة العسكرية", discordId: person.discord, discordTag: person.discordTag, actorId: req.user.id, actorTag: req.user.username, details: settings.mpLeadership.personnelOfficerName });
+    await logEvent({ action: "تعيين مسؤول أفراد الشؤون العسكرية", discordId: person.discord, discordTag: person.discordTag, actorId: req.user.id, actorTag: req.user.username, details: settings.mpLeadership.personnelOfficerName });
     res.json({ ok: true, mpLeadership: settings.mpLeadership });
 });
 app.post("/api/mp/personnel-officer/remove", ensureMPLeader, async (req, res) => {
@@ -4956,7 +5021,7 @@ app.post("/api/mp/personnel-officer/remove", ensureMPLeader, async (req, res) =>
     settings.mpLeadership.personnelOfficerName = null;
     settings.markModified("mpLeadership");
     await settings.save();
-    await logEvent({ action: "إزالة مسؤول أفراد الشرطة العسكرية", actorId: req.user.id, actorTag: req.user.username, details: removedName || "-" });
+    await logEvent({ action: "إزالة مسؤول أفراد الشؤون العسكرية", actorId: req.user.id, actorTag: req.user.username, details: removedName || "-" });
     res.json({ ok: true, mpLeadership: settings.mpLeadership });
 });
 
@@ -4982,7 +5047,7 @@ app.post("/api/mp/personnel/:discord/warn", ensureMPLeader, async (req, res) => 
         const { p, dismissed } = await issueWarning({
             targetDiscord: req.params.discord, kind: req.body.kind, reason: req.body.reason,
             pointsToDeduct: req.body.pointsToDeduct, penaltyType: req.body.penaltyType,
-            actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)",
+            actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)",
         });
         res.json({ ok: true, warnings: p.warnings, dismissed });
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -4996,7 +5061,7 @@ app.get("/api/mp/personnel/:discord/warning-info", ensureMPLeader, async (req, r
 
 app.get("/api/mp/force-members", ensureMPLeader, async (req, res) => {
     const ids = await getMilitaryPoliceMemberIds();
-    if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء الشرطة العسكرية من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
+    if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء الشؤون العسكرية من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
     const list = ids.length ? await Personnel.find({ discord: { $in: ids } }, { "notes.image": 0 }).sort({ createdAt: -1 }) : [];
     res.json({ list });
 });
@@ -5005,14 +5070,14 @@ app.post("/api/mp/notice-all", ensureMPLeader, async (req, res) => {
     const { reason } = req.body;
     if (!reason || !reason.trim()) return res.status(400).json({ error: "لازم تكتب النص" });
     const ids = await getMilitaryPoliceMemberIds();
-    if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء الشرطة العسكرية من ديسكورد حالياً، حاول مرة ثانية" });
+    if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء الشؤون العسكرية من ديسكورد حالياً، حاول مرة ثانية" });
     const fullReason = `📢 إشعار للشرطة العسكرية: ${reason.trim()}`;
     const entry = { kind: "notice", reason: fullReason, issuedBy: req.user.id, issuedByTag: req.user.username };
     const result = await Personnel.updateMany(
         { discord: { $in: ids }, registeredName: { $ne: null } },
         { $push: { warnings: entry } }
     );
-    await logEvent({ action: "إصدار إشعار الشرطة العسكرية", actorId: req.user.id, actorTag: req.user.username, details: `📢 (${result.modifiedCount}): ${reason.trim()}` });
+    await logEvent({ action: "إصدار إشعار الشؤون العسكرية", actorId: req.user.id, actorTag: req.user.username, details: `📢 (${result.modifiedCount}): ${reason.trim()}` });
     res.json({ ok: true, count: result.modifiedCount });
 });
 
@@ -5021,9 +5086,9 @@ app.post("/api/mp/personnel/:discord/note", ensureMPMember, async (req, res) => 
     if (!text || !text.trim()) return res.status(400).json({ error: "اكتب الملاحظة" });
     if (!image) return res.status(400).json({ error: "لازم ترفق صورة مع الملاحظة" });
     if (image.length > CONFIG.MAX_PHOTO_MB * 1024 * 1024 * 1.4) return res.status(400).json({ error: `الصورة أكبر من ${CONFIG.MAX_PHOTO_MB}MB` });
-    const p = await pushNoteWithImage({ discord: req.params.discord, text: text.trim(), image, actorId: req.user.id, actorTag: req.user.username + " (شرطة عسكرية)" });
+    const p = await pushNoteWithImage({ discord: req.params.discord, text: text.trim(), image, actorId: req.user.id, actorTag: req.user.username + " (شؤون عسكرية)" });
     if (!p) return res.status(404).json({ error: "غير موجود" });
-    await logEvent({ action: "إضافة ملاحظة", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (شرطة عسكرية)", details: `على ${p.registeredName || p.discord}` });
+    await logEvent({ action: "إضافة ملاحظة", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (شؤون عسكرية)", details: `على ${p.registeredName || p.discord}` });
     res.json({ ok: true, notes: p.notes });
 });
 
@@ -5051,7 +5116,7 @@ app.post("/api/mp/personnel/:discord/summon", ensureMPMember, async (req, res) =
     await p.save();
     await logEvent({
         action: isLeaderOrSenior ? "استدعاء عسكري" : "طلب استدعاء", discordId: p.discord, discordTag: p.discordTag,
-        actorId: req.user.id, actorTag: req.user.username + " (شرطة عسكرية)",
+        actorId: req.user.id, actorTag: req.user.username + " (شؤون عسكرية)",
         details: `${p.registeredName || p.discord} — ${timeLabel}`,
     });
     if (isLeaderOrSenior) sendSummonDM(p.discord, timeLabel);
@@ -5060,7 +5125,7 @@ app.post("/api/mp/personnel/:discord/summon", ensureMPMember, async (req, res) =
 app.post("/api/mp/personnel/:discord/summon/stop", ensureMPLeader, async (req, res) => {
     const p = await Personnel.findOneAndUpdate({ discord: req.params.discord }, { summon: { status: "none" } }, { new: true });
     if (!p) return res.status(404).json({ error: "غير موجود" });
-    await logEvent({ action: "إيقاف استدعاء", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)", details: p.registeredName || p.discord });
+    await logEvent({ action: "إيقاف استدعاء", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)", details: p.registeredName || p.discord });
     res.json({ ok: true });
 });
 app.get("/api/mp/summon-requests", ensureMPLeader, async (req, res) => {
@@ -5072,14 +5137,14 @@ app.post("/api/mp/summon-requests/:discord/approve", ensureMPLeader, async (req,
     if (!p || !p.summon || p.summon.status !== "pending") return res.status(404).json({ error: "غير موجود" });
     p.summon.status = "approved"; p.summon.setBy = req.user.id; p.summon.setByTag = req.user.username; p.summon.setAt = new Date();
     await p.save();
-    await logEvent({ action: "قبول طلب استدعاء", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)", details: p.registeredName || p.discord });
+    await logEvent({ action: "قبول طلب استدعاء", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)", details: p.registeredName || p.discord });
     sendSummonDM(p.discord, p.summon.timeLabel);
     res.json({ ok: true });
 });
 app.post("/api/mp/summon-requests/:discord/reject", ensureMPLeader, async (req, res) => {
     const p = await Personnel.findOneAndUpdate({ discord: req.params.discord, "summon.status": "pending" }, { summon: { status: "none" } }, { new: true });
     if (!p) return res.status(404).json({ error: "غير موجود" });
-    await logEvent({ action: "رفض طلب استدعاء", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)", details: p.registeredName || p.discord });
+    await logEvent({ action: "رفض طلب استدعاء", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)", details: p.registeredName || p.discord });
     res.json({ ok: true });
 });
 app.post("/api/summon/enter", ensureAuth, async (req, res) => {
@@ -5118,7 +5183,7 @@ function buildMPPointsEmbed(r, settings) {
     const ml = (settings && settings.mpLeadership) || {};
     const add = r.direction === "add";
     const color = r.status === "approved" ? 0x16a34a : r.status === "rejected" ? 0x6b7280 : (add ? 0x22c55e : 0xef4444);
-    const title = r.status === "approved" ? "✅ تم تنفيذ طلب النقاط" : r.status === "rejected" ? "❌ تم رفض طلب النقاط" : (add ? "⭐ طلب إضافة نقاط — شرطة عسكرية" : "⭐ طلب خصم نقاط — شرطة عسكرية");
+    const title = r.status === "approved" ? "✅ تم تنفيذ طلب النقاط" : r.status === "rejected" ? "❌ تم رفض طلب النقاط" : (add ? "⭐ طلب إضافة نقاط — شؤون عسكرية" : "⭐ طلب خصم نقاط — شؤون عسكرية");
     const approvalLine = (ap, id) => {
         if (ap && ap.by) return "✅ " + (ap.byTag || ap.by);
         if (r.status === "rejected") return "—";
@@ -5166,7 +5231,7 @@ async function postMPPointsRequest(r) {
         });
         await MPPointsRequest.updateOne({ _id: r._id }, { $set: { channelId: msg.channelId, messageId: msg.id } });
     } catch (e) {
-        console.error("❌ فشل إرسال طلب النقاط لروم الشرطة العسكرية:", e.message);
+        console.error("❌ فشل إرسال طلب النقاط لروم الشؤون العسكرية:", e.message);
     }
 }
 
@@ -5196,10 +5261,10 @@ async function applyMPPointsRequest(r) {
     const newPoints = after ? after.points : oldPoints;
     const gain = delta >= 0;
     const name = r.targetName || r.targetTag;
-    const byTag = "قيادة الشرطة العسكرية";
-    await pushNoticeTo(r.targetDiscord, `⭐ تم ${gain ? "إضافة" : "خصم"} ${r.amount} نقطة ${gain ? "لك" : "من نقاطك"} بموافقة قيادة الشرطة العسكرية. نقاطك الآن: ${newPoints}.\nالسبب: ${r.reason || "-"}`, r.reviewedBy, byTag);
-    await pushNoticeTo(r.requestedBy, `✅ انقبل طلبك بـ${gain ? "إضافة" : "خصم"} ${r.amount} نقطة لـ${name} من قائد الشرطة العسكرية ونائبه.`, r.reviewedBy, byTag);
-    await logEvent({ action: "تعديل نقاط", discordId: r.targetDiscord, discordTag: r.targetTag, actorId: r.reviewedBy, actorTag: byTag, details: `${oldPoints} ← ${newPoints} (${fmtDelta(delta)}) — طلب ${r.requestedByTag} (شرطة عسكرية) — السبب: ${r.reason || "-"}` });
+    const byTag = "قيادة الشؤون العسكرية";
+    await pushNoticeTo(r.targetDiscord, `⭐ تم ${gain ? "إضافة" : "خصم"} ${r.amount} نقطة ${gain ? "لك" : "من نقاطك"} بموافقة قيادة الشؤون العسكرية. نقاطك الآن: ${newPoints}.\nالسبب: ${r.reason || "-"}`, r.reviewedBy, byTag);
+    await pushNoticeTo(r.requestedBy, `✅ انقبل طلبك بـ${gain ? "إضافة" : "خصم"} ${r.amount} نقطة لـ${name} من قائد الشؤون العسكرية ونائبه.`, r.reviewedBy, byTag);
+    await logEvent({ action: "تعديل نقاط", discordId: r.targetDiscord, discordTag: r.targetTag, actorId: r.reviewedBy, actorTag: byTag, details: `${oldPoints} ← ${newPoints} (${fmtDelta(delta)}) — طلب ${r.requestedByTag} (شؤون عسكرية) — السبب: ${r.reason || "-"}` });
     notifyHighCommandOfPoints({
         targetName: name, targetTag: r.targetTag,
         oldPoints, newPoints, delta: newPoints - oldPoints,
@@ -5228,7 +5293,7 @@ async function decideMPPointsRequest(id, userId, userTag, decision, source) {
     try {
         const settings = await getSettings();
         const role = await getMPApproverRole(userId, settings, source);
-        if (!role) return { error: "الموافقة على طلبات النقاط لقائد الشرطة العسكرية ونائبه فقط" };
+        if (!role) return { error: "الموافقة على طلبات النقاط لقائد الشؤون العسكرية ونائبه فقط" };
         const r0 = await MPPointsRequest.findById(id);
         if (!r0 || r0.status !== "pending") return { error: "هذا الطلب تمت مراجعته مسبقاً" };
         const roleLabel = role === "commander" ? "القائد" : "النائب";
@@ -5241,7 +5306,7 @@ async function decideMPPointsRequest(id, userId, userTag, decision, source) {
             );
             if (!r) return { error: "هذا الطلب تمت مراجعته مسبقاً" };
             await pushNoticeTo(r.requestedBy, `❌ انرفض طلبك بـ${r.direction === "add" ? "إضافة" : "خصم"} ${r.amount} نقطة لـ${r.targetName || r.targetTag} من ${tag}.`, userId, userTag);
-            await logEvent({ action: "رفض طلب نقاط (شرطة عسكرية)", discordId: r.targetDiscord, discordTag: r.targetTag, actorId: userId, actorTag: tag, details: `${r.direction === "add" ? "+" : "-"}${r.amount} — طلب ${r.requestedByTag}` });
+            await logEvent({ action: "رفض طلب نقاط (شؤون عسكرية)", discordId: r.targetDiscord, discordTag: r.targetTag, actorId: userId, actorTag: tag, details: `${r.direction === "add" ? "+" : "-"}${r.amount} — طلب ${r.requestedByTag}` });
             await refreshMPPointsMessage(r);
             return { ok: true, status: "rejected" };
         }
@@ -5252,7 +5317,7 @@ async function decideMPPointsRequest(id, userId, userTag, decision, source) {
             { new: true }
         );
         if (!marked) return { error: "وافقت على هذا الطلب مسبقاً، بانتظار الطرف الثاني" };
-        await logEvent({ action: "موافقة على طلب نقاط (شرطة عسكرية)", discordId: marked.targetDiscord, discordTag: marked.targetTag, actorId: userId, actorTag: tag, details: `${marked.direction === "add" ? "+" : "-"}${marked.amount} — طلب ${marked.requestedByTag}` });
+        await logEvent({ action: "موافقة على طلب نقاط (شؤون عسكرية)", discordId: marked.targetDiscord, discordTag: marked.targetTag, actorId: userId, actorTag: tag, details: `${marked.direction === "add" ? "+" : "-"}${marked.amount} — طلب ${marked.requestedByTag}` });
         const fresh = await completeMPPointsIfDone(id, userId, tag);
         await refreshMPPointsMessage(fresh || marked);
         return { ok: true, status: fresh ? fresh.status : "pending" };
@@ -5283,7 +5348,7 @@ app.post("/api/mp/points-request", ensureMPMember, async (req, res) => {
         const doc = {
             targetDiscord: t.discord, targetTag: t.discordTag, targetName: t.registeredName,
             direction, amount, reason: String(reason).trim().slice(0, 500),
-            requestedBy: req.user.id, requestedByTag: req.user.username + (roleLabel ? " (" + roleLabel + " الشرطة العسكرية)" : " (شرطة عسكرية)"), requestedByName: requesterName,
+            requestedBy: req.user.id, requestedByTag: req.user.username + (roleLabel ? " (" + roleLabel + " الشؤون العسكرية)" : " (شؤون عسكرية)"), requestedByName: requesterName,
             status: "pending",
         };
         if (role) {
@@ -5292,7 +5357,7 @@ app.post("/api/mp/points-request", ensureMPMember, async (req, res) => {
             doc.deputyApproval = selfApproval;
         }
         const created = await MPPointsRequest.create(doc);
-        await logEvent({ action: "طلب نقاط (شرطة عسكرية)", discordId: t.discord, discordTag: t.discordTag, actorId: req.user.id, actorTag: doc.requestedByTag, details: `${direction === "add" ? "+" : "-"}${amount} — السبب: ${doc.reason} — بانتظار موافقة القائد والنائب` });
+        await logEvent({ action: "طلب نقاط (شؤون عسكرية)", discordId: t.discord, discordTag: t.discordTag, actorId: req.user.id, actorTag: doc.requestedByTag, details: `${direction === "add" ? "+" : "-"}${amount} — السبب: ${doc.reason} — بانتظار موافقة القائد والنائب` });
         await postMPPointsRequest(created);
         let fresh = await MPPointsRequest.findById(created._id);
         if (role) {
@@ -5325,7 +5390,7 @@ app.post("/api/mp/points-requests/:id/reject", ensureMPLeader, async (req, res) 
 
 app.post("/api/mp/reports/submit", ensureMPMember, async (req, res) => {
     const { dutyReport, patrolsCount, summonsCount, incidents, notesIssued, generalNotes } = req.body;
-    if (!dutyReport || !dutyReport.trim()) return res.status(400).json({ error: "اكتب وش سويت بالاستلام" });
+    if (!dutyReport || !dutyReport.trim()) return res.status(400).json({ error: "اكتب وش سويت خلال الشفت" });
     const settings = req.settings;
     const p = await Personnel.findOne({ discord: req.user.id });
     const mpRole = getMPRole(req.user.id, settings);
@@ -5353,12 +5418,12 @@ app.post("/api/mp/reports/submit", ensureMPMember, async (req, res) => {
         if (mpRole === "deputy" && settings.mpLeadership?.commanderId) {
             await Personnel.findOneAndUpdate({ discord: settings.mpLeadership.commanderId }, { $push: { warnings: {
                 kind: "notice",
-                reason: `النائب ${p?.registeredName || req.user.username} قدّم تقرير شرطة عسكرية جديد — راجعه من لوحة الشرطة العسكرية.`,
+                reason: `النائب ${p?.registeredName || req.user.username} قدّم تقرير شؤون عسكرية جديد — راجعه من لوحة الشؤون العسكرية.`,
                 issuedBy: req.user.id, issuedByTag: req.user.username,
             } } });
         }
     }
-    await logEvent({ action: "تسجيل تقرير شرطة عسكرية", discordId: req.user.id, discordTag: req.user.username, actorId: req.user.id, actorTag: req.user.username + (isLeader ? " (قيادة الشرطة العسكرية)" : " (شرطة عسكرية)"), details: isLeader ? "تقرير مقبول تلقائياً" : "تقرير جديد بانتظار المراجعة" });
+    await logEvent({ action: "تسجيل تقرير شؤون عسكرية", discordId: req.user.id, discordTag: req.user.username, actorId: req.user.id, actorTag: req.user.username + (isLeader ? " (قيادة الشؤون العسكرية)" : " (شؤون عسكرية)"), details: isLeader ? "تقرير مقبول تلقائياً" : "تقرير جديد بانتظار المراجعة" });
     res.json({ ok: true, report: doc });
 });
 app.get("/api/mp/reports/pending", ensureMPLeader, async (req, res) => {
@@ -5376,7 +5441,7 @@ app.post("/api/mp/reports/:id/approve", ensureMPLeader, async (req, res) => {
     await r.save();
     await Personnel.findOneAndUpdate({ discord: r.reporterDiscord }, { $inc: { points: CONFIG.MP_REPORT_POINTS_APPROVE } });
     await checkAutoPromotion(r.reporterDiscord);
-    await logEvent({ action: "قبول تقرير شرطة عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)", details: `+${CONFIG.MP_REPORT_POINTS_APPROVE} نقطة` });
+    await logEvent({ action: "قبول تقرير شؤون عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)", details: `+${CONFIG.MP_REPORT_POINTS_APPROVE} نقطة` });
     res.json({ ok: true });
 });
 app.post("/api/mp/reports/:id/reject", ensureMPLeader, async (req, res) => {
@@ -5387,13 +5452,13 @@ app.post("/api/mp/reports/:id/reject", ensureMPLeader, async (req, res) => {
     r.status = "rejected"; r.rejectReason = reason.trim(); r.reviewedBy = req.user.id; r.reviewedByTag = req.user.username; r.reviewedAt = new Date();
     await r.save();
     await Personnel.findOneAndUpdate({ discord: r.reporterDiscord }, { $push: { warnings: { kind: "notice", reason: "تم رفض تقريرك — انتبه المرة الجاية. السبب: " + reason.trim(), issuedBy: req.user.id, issuedByTag: req.user.username } } });
-    await logEvent({ action: "رفض تقرير شرطة عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)", details: reason.trim() });
+    await logEvent({ action: "رفض تقرير شؤون عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)", details: reason.trim() });
     res.json({ ok: true });
 });
 app.delete("/api/mp/reports/:id", ensureMPLeader, async (req, res) => {
     const r = await MPReport.findByIdAndDelete(req.params.id);
     if (!r) return res.status(404).json({ error: "غير موجود" });
-    await logEvent({ action: "حذف تقرير شرطة عسكرية نهائياً", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشرطة العسكرية)", details: r.dutyReport ? r.dutyReport.slice(0, 100) : "-" });
+    await logEvent({ action: "حذف تقرير شؤون عسكرية نهائياً", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (قيادة الشؤون العسكرية)", details: r.dutyReport ? r.dutyReport.slice(0, 100) : "-" });
     res.json({ ok: true });
 });
 
@@ -5409,7 +5474,7 @@ app.get("/api/mp/promotion-log", ensureMPLeader, async (req, res) => {
 
 app.get("/api/mp/po/members", ensureMPPersonnelOfficer, async (req, res) => {
     const ids = await getMilitaryPoliceMemberIds();
-    if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء الشرطة العسكرية من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
+    if (ids === null) return res.status(503).json({ error: "تعذر جلب أعضاء الشؤون العسكرية من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
     const settings = req.settings;
     const excludeIds = [settings.mpLeadership?.commanderId, settings.mpLeadership?.deputyId].filter(Boolean);
     const filtered = ids.filter(id => !excludeIds.includes(id));
@@ -5421,15 +5486,15 @@ app.post("/api/mp/po/personnel/:discord/note", ensureMPPersonnelOfficer, async (
     const excludeIds = [settings.mpLeadership?.commanderId, settings.mpLeadership?.deputyId].filter(Boolean);
     if (excludeIds.includes(req.params.discord)) return res.status(403).json({ error: "ما تقدر تحط ملاحظة على القائد أو النائب" });
     const ids = await getMilitaryPoliceMemberIds();
-    if (ids === null) return res.status(503).json({ error: "تعذر التحقق من أعضاء الشرطة العسكرية حالياً، حاول مرة ثانية بعد شوي" });
-    if (!ids.includes(req.params.discord)) return res.status(403).json({ error: "هذا الشخص ليس من أعضاء الشرطة العسكرية" });
+    if (ids === null) return res.status(503).json({ error: "تعذر التحقق من أعضاء الشؤون العسكرية حالياً، حاول مرة ثانية بعد شوي" });
+    if (!ids.includes(req.params.discord)) return res.status(403).json({ error: "هذا الشخص ليس من أعضاء الشؤون العسكرية" });
     const { text, image } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ error: "اكتب الملاحظة" });
     if (!image) return res.status(400).json({ error: "لازم ترفق صورة مع الملاحظة" });
     if (image.length > CONFIG.MAX_PHOTO_MB * 1024 * 1024 * 1.4) return res.status(400).json({ error: `الصورة أكبر من ${CONFIG.MAX_PHOTO_MB}MB` });
-    const p = await pushNoteWithImage({ discord: req.params.discord, text: text.trim(), image, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشرطة العسكرية)" });
+    const p = await pushNoteWithImage({ discord: req.params.discord, text: text.trim(), image, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشؤون العسكرية)" });
     if (!p) return res.status(404).json({ error: "غير موجود" });
-    await logEvent({ action: "إضافة ملاحظة", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشرطة العسكرية)", details: `على ${p.registeredName || p.discord}` });
+    await logEvent({ action: "إضافة ملاحظة", discordId: p.discord, discordTag: p.discordTag, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشؤون العسكرية)", details: `على ${p.registeredName || p.discord}` });
     res.json({ ok: true, notes: p.notes });
 });
 app.get("/api/mp/po/reports/pending", ensureMPPersonnelOfficer, async (req, res) => {
@@ -5447,7 +5512,7 @@ app.post("/api/mp/po/reports/:id/approve", ensureMPPersonnelOfficer, async (req,
     await r.save();
     await Personnel.findOneAndUpdate({ discord: r.reporterDiscord }, { $inc: { points: CONFIG.MP_REPORT_POINTS_APPROVE } });
     await checkAutoPromotion(r.reporterDiscord);
-    await logEvent({ action: "قبول تقرير شرطة عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشرطة العسكرية)", details: `+${CONFIG.MP_REPORT_POINTS_APPROVE} نقطة` });
+    await logEvent({ action: "قبول تقرير شؤون عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشؤون العسكرية)", details: `+${CONFIG.MP_REPORT_POINTS_APPROVE} نقطة` });
     res.json({ ok: true });
 });
 app.post("/api/mp/po/reports/:id/reject", ensureMPPersonnelOfficer, async (req, res) => {
@@ -5460,7 +5525,7 @@ app.post("/api/mp/po/reports/:id/reject", ensureMPPersonnelOfficer, async (req, 
     r.status = "rejected"; r.rejectReason = reason.trim(); r.reviewedBy = req.user.id; r.reviewedByTag = req.user.username; r.reviewedAt = new Date();
     await r.save();
     await Personnel.findOneAndUpdate({ discord: r.reporterDiscord }, { $push: { warnings: { kind: "notice", reason: "تم رفض تقريرك — انتبه المرة الجاية. السبب: " + reason.trim(), issuedBy: req.user.id, issuedByTag: req.user.username } } });
-    await logEvent({ action: "رفض تقرير شرطة عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشرطة العسكرية)", details: reason.trim() });
+    await logEvent({ action: "رفض تقرير شؤون عسكرية", discordId: r.reporterDiscord, discordTag: r.reporterTag, actorId: req.user.id, actorTag: req.user.username + " (مسؤول أفراد الشؤون العسكرية)", details: reason.trim() });
     res.json({ ok: true });
 });
 
@@ -5567,7 +5632,7 @@ const SUPPORT_BANNED_MSG = "تم حظرك من خدمة الدعم الفني";
 
 const SUPPORT_AI_PROMPT = [
     "أنت مساعد خدمة العملاء لموقع «سيرفر وزارة الداخلية» (فلاش) — موقع لعب أدوار (ماين كرافت/محاكاة) لإدارة عساكر وزارة الداخلية، ولا يمت للواقع بصلة.",
-    "الموقع فيه: تسجيل حساب بالبريد وموافقة الإدارة عليه، تسجيل المخالفات بالصور، نقاط ورتب عسكرية، طلبات الإجازات، البطاقة العسكرية، القطاعات (LSBD، SSF، الشرطة العسكرية، الشؤون العسكرية)، الشرطة العسكرية، ولوحات للإدارة وقادة القطاعات.",
+    "الموقع فيه: تسجيل حساب بالبريد وموافقة الإدارة عليه، تسجيل المخالفات بالصور، نقاط ورتب عسكرية، طلبات الإجازات، البطاقة العسكرية، القطاعات (LSBD، SSF، الشؤون العسكرية، الشؤون العسكرية)، الشؤون العسكرية، ولوحات للإدارة وقادة القطاعات.",
     "الموقع يتحدّث لحظياً بدون ريفرش، فلا تنصح بتحديث الصفحة كحل أول.",
     "",
     "أسلوبك: لهجة سعودية بيضاء بسيطة ومحترمة، ردود قصيرة (٢–٥ أسطر).",
@@ -5746,7 +5811,7 @@ const SUPPORT_FAQ = [
     { id: "blocked", keys: ["موقوف", "ايقاف", "محظور", "حظر", "ايقافي", "صيانه", "الموقع مغلق", "مغلق", "التسجيل مغلق", "انسحب", "فصل", "مفصول"],
       a: "إذا ظهرت لك شاشة إيقاف أو حظر أو صيانة فالسبب مكتوب فيها. الإيقاف المؤقت يرجع الحساب تلقائياً بعد انتهاء المدة، والصيانة تخلص وتفتح لك الصفحة لحالها بدون ما تحدّث.\nإذا تبي تعترض أو تستفسر عن السبب اضغط «تحدث مع عضو حقيقي»." , human: true },
     { id: "points", keys: ["نقاطي", "النقاط", "نقاط", "ما زادت", "ما زاد", "خصم", "انخصم", "انخصمت", "نقطه"],
-      a: () => "النقاط تنحسب كذا:\n• قبول مخالفة: +" + CONFIG.POINTS_ON_APPROVE + "\n• رفض مخالفة: -" + CONFIG.POINTS_ON_REJECT + "\n• قبول تقرير مكافحة المخدرات: +" + CONFIG.REPORT_POINTS_APPROVE + "\n• قبول تقرير الشرطة العسكرية: +" + CONFIG.MP_REPORT_POINTS_APPROVE + "\nالنقاط تنزل بس بعد ما الإدارة تراجع وتقبل العمل، فإذا مخالفتك لسا «قيد المراجعة» ما بتزيد. تشوف حالتها بصفحة «مخالفاتي»." },
+      a: () => "النقاط تنحسب كذا:\n• قبول مخالفة: +" + CONFIG.POINTS_ON_APPROVE + "\n• رفض مخالفة: -" + CONFIG.POINTS_ON_REJECT + "\n• قبول تقرير مكافحة المخدرات: +" + CONFIG.REPORT_POINTS_APPROVE + "\n• قبول تقرير الشؤون العسكرية: +" + CONFIG.MP_REPORT_POINTS_APPROVE + "\nالنقاط تنزل بس بعد ما الإدارة تراجع وتقبل العمل، فإذا مخالفتك لسا «قيد المراجعة» ما بتزيد. تشوف حالتها بصفحة «مخالفاتي»." },
     { id: "rank", keys: ["ترقيه", "ترقية", "الترقيات", "ترقيات", "رتبتي", "رتبي", "=رتبه", "=رتبة", "=الرتبه", "ما انرقيت", "ما رقوني", "رقوني", "ترقيت", "اترقى", "ارقى", "متى اترقى", "كم باقي", "كم باقي لي", "الرتبه الجايه", "الرتبه التاليه", "كم رتبتي", "وش رتبتي", "رتبتي كم", "رتبه خطا", "نقاط الترقيه", "ارتقي", "ارتقاء", "تنزيل رتبه", "نزلوني", "تنزيل"],
       a: () => "الترقية مبنية على نقاطك، وتشوف رتبتك والرتبة التالية وكم باقي لها في «الرئيسية». النقاط المطلوبة للرتبة التالية افتراضياً " + CONFIG.DEFAULT_POINTS_PER_RANK + " نقطة، والإدارة ممكن تعدلها. إذا وصلت للنقاط وما انرقيت، أحياناً الترقية تحتاج موافقة من قيادتك.\nلو تحس فيه خطأ برتبتك (أو انتزلت بدون ما تعرف السبب) اضغط «تحدث مع عضو حقيقي».", human: true },
     { id: "ranks_list", keys: ["وش الرتب", "ايش الرتب", "=الرتب", "كل الرتب", "ترتيب الرتب", "قائمه الرتب", "الرتب العسكريه", "رتب العسكر", "اعلى رتبه", "اقل رتبه", "ادنى رتبه", "اعلى رتبة", "=رتب"],
@@ -5765,8 +5830,8 @@ const SUPPORT_FAQ = [
       a: "القطاع واليونت تحددهم الإدارة على حسابك، وما تقدر تغيرهم بنفسك من الموقع. إذا تبي تنتقل لقطاع ثاني أو فيه خطأ، اضغط «تحدث مع عضو حقيقي».", human: true },
     { id: "warning", keys: ["تحذير", "انذار", "عقوبه", "عقوبة", "التحذير الثالث", "معاقب"],
       a: "التحذيرات والعقوبات تصدر من الإدارة فقط. لو عندك اعتراض أو استفسار عن تحذير اضغط «تحدث مع عضو حقيقي» ووضّح الموضوع.", human: true },
-    { id: "mp", keys: ["الشرطه العسكريه", "شرطه عسكريه", "الشرطة العسكرية", "استدعاء", "مستدعي"],
-      a: "الاستدعاءات والشرطة العسكرية تتابعها لوحة الشرطة العسكرية، وإذا انطلب منك دخول فويس يظهر لك تنبيه بالموقع. لأي استفسار عن استدعاء اضغط «تحدث مع عضو حقيقي».", human: true },
+    { id: "mp", keys: ["الشرطه العسكريه", "شرطه عسكريه", "الشرطة العسكرية", "الشؤون العسكرية", "الشؤون العسكريه", "الشئون العسكريه", "استدعاء", "مستدعي"],
+      a: "الاستدعاءات والشؤون العسكرية تتابعها لوحة الشؤون العسكرية، وإذا انطلب منك دخول فويس يظهر لك تنبيه بالموقع. لأي استفسار عن استدعاء اضغط «تحدث مع عضو حقيقي».", human: true },
     { id: "loading", keys: ["جاري التحميل", "جار التحميل", "تعليق", "معلق الموقع", "ما يشتغل", "لا يعمل", "ما يفتح الصفحه", "صفحه بيضاء", "bug", "باگ", "بطيء", "يهنق", "هنق", "فاضيه"],
       a: "الموقع يتحدث لحظياً بدون ما تحتاج تحدّث الصفحة، فإذا صار تعليق جرّب:\n1) سجّل خروج وادخل من جديد.\n2) افتح الموقع بنافذة خاصة أو متصفح ثاني.\n3) تأكد من الإنترنت.\nوإذا لسا موجودة، اكتب لي اسم الصفحة اللي فيها المشكلة وش اللي صار بالضبط، وأرفق لقطة شاشة بزر 📎." },
     { id: "suggest", keys: ["اقتراح", "اقترح", "فكره", "فكرة", "ابي اضيف", "ياليت", "يا ليت"], human: true,
@@ -6297,7 +6362,6 @@ const SUPPORT_CATS = {
     account: { title: "معلومات الحساب", keys: ["account.name", "account.email", "account.password", "account.age", "account.nationality", "account.status", "account.sector", "account.created"] },
     attendance: { title: "عدد الانصراف", keys: ["attn.outs", "attn.ins", "attn.status", "attn.lastIn", "attn.lastOut"] },
     file: { title: "معلومات الملف العسكري", keys: ["file.name", "file.unit", "file.rank", "file.points", "file.sector", "file.card", "file.leave", "file.warns", "file.blocked"] },
-    receipt: { title: "آخر استلام", keys: ["rec.date", "rec.result", "rec.attended", "rec.absent", "rec.leave"] },
     log: { title: "لوق العضو", keys: [] },
 };
 const SUPPORT_FIXED_KEYS = [].concat(...Object.values(SUPPORT_CATS).map(c => c.keys));
@@ -6343,17 +6407,6 @@ async function supportCatRows(cat, uid, opts) {
         rows.push(R("file.name", "الاسم المسجّل", p.registeredName), R("file.unit", "اليونت", p.unit), R("file.rank", "الرتبة", p.rank),
             R("file.points", "النقاط", p.points), R("file.sector", "القطاع", CONFIG.SECTORS[sec] || "—"), R("file.card", "رقم البطاقة", p.cardNumber),
             R("file.leave", "رصيد الإجازات", p.leaveBalance), R("file.warns", "عدد التحذيرات", (p.warnings || []).length), R("file.blocked", "موقوف (بند)", yn(p.isBlocked)));
-    } else if (cat === "receipt") {
-        const [last, grp] = await Promise.all([
-            RecRow.findOne({ uid }).sort({ openedAt: -1, dayKey: -1 }).lean(),
-            RecRow.aggregate([{ $match: { uid } }, { $group: { _id: "$kind", n: { $sum: 1 } } }]).option({ maxTimeMS: 10000 }),
-        ]);
-        if (!last) return [R("rec.date", "الاستلام", "ما له أي استلام")].filter(r => !only || only.has(r.k));
-        const ex = last.excuseStatus === "accepted" || last.removedAt ? " (انشال الغياب)" : last.excuseStatus === "pending" ? " (عذر معلّق)" : last.excuseStatus === "rejected" ? " (عذر مرفوض)" : "";
-        const result = last.kind === "attended" ? "حضر (+" + (last.gained || 1) + ")" : last.kind === "leave" ? "إجازة" : "غاب" + (last.deducted ? " (-" + last.deducted + ")" : "") + ex;
-        const cnt = kind => (grp.find(g => g._id === kind) || {}).n || 0;
-        rows.push(D("rec.date", "تاريخ آخر استلام", last.openedAt || last.dayKey), R("rec.result", "النتيجة", result),
-            R("rec.attended", "إجمالي الحضور", cnt("attended")), R("rec.absent", "إجمالي الغياب", cnt("absent")), R("rec.leave", "إجمالي الإجازة", cnt("leave")));
     } else if (cat === "log") {
         const ids = only ? Array.from(only).filter(k => SUPPORT_DYN_KEY.test(k)) : null;
         const logIds = ids ? ids.filter(k => k.startsWith("log:")).map(k => k.slice(4)) : null;
@@ -7689,14 +7742,14 @@ app.post("/api/officers/rooms/:n/mic", ensureAuth, (req, res) => {
     offPushState(n);
     res.json({ ok: true });
 });
-// ديفن: كبار المسؤولين + قيادة وأفراد الشرطة العسكرية — الشخص ما يسمع أحد
+// ديفن: كبار المسؤولين + قيادة وأفراد الشؤون العسكرية — الشخص ما يسمع أحد
 app.post("/api/officers/rooms/:n/deafen", ensureAuth, async (req, res) => {
     const n = offParseN(req.params.n);
     const m = n ? offLive.get(n) : null;
     const me = m ? m.get(req.user.id) : null;
     if (!me) return res.status(403).json({ error: "لازم تكون داخل الروم" });
     const senior = isSeniorAdmin(req.user.id);
-    if (!senior && !(await courtRole(req.user.id)).staff) return res.status(403).json({ error: "الديفن لكبار المسؤولين وقيادة وأفراد الشرطة العسكرية فقط" });
+    if (!senior && !(await courtRole(req.user.id)).staff) return res.status(403).json({ error: "الديفن لكبار المسؤولين وقيادة وأفراد الشؤون العسكرية فقط" });
     const target = String((req.body || {}).uid || "");
     const tp = m.get(target);
     if (!tp || target === req.user.id) return res.status(404).json({ error: "هذا الشخص مو داخل الروم" });
@@ -7976,7 +8029,7 @@ async function cyberAudience(c) {
     const mem = await Account.find({ status: "approved", sector: "cyber" }, { uid: 1 }).lean();
     mem.forEach(m => set.add(m.uid));
     const sl = (settings.sectorLeadership || {}).cyber || {};
-    [sl.commanderId, sl.deputyId, sl.personnelOfficerId].filter(Boolean).forEach(x => set.add(x));
+    [sl.commanderId, sl.deputyId, sl.personnelOfficerId, sl.officersOfficerId].filter(Boolean).forEach(x => set.add(x));
     if (c && c.targetUid) set.add(c.targetUid);
     cyAudCache.set(key, { t: Date.now(), set });
     return set;
@@ -8554,7 +8607,7 @@ app.get("/api/cyber/sector", ensureAuth, async (req, res) => {
         const add = (u, r) => { if (u && !roleOf.has(u)) { roleOf.set(u, r); order.push(u); } };
         add(sl.commanderId, "commander");
         add(sl.deputyId, "deputy");
-        add(sl.personnelOfficerId, "officer");
+        add(sl.personnelOfficerId, "officer"); add(sl.officersOfficerId, "officer");
         (await Account.find({ status: "approved", sector: "cyber" }, { uid: 1 }).lean()).forEach(a => add(a.uid, "member"));
         const accs = await Account.find({ uid: { $in: order } }, { uid: 1, fullName: 1, age: 1, nationality: 1, sector: 1, createdAt: 1, isSenior: 1, isOwner: 1, tempSenior: 1 }).lean();
         const amap = new Map(accs.map(a => [a.uid, a]));
@@ -8986,7 +9039,7 @@ async function attPeople(uids) {
     }
     return out;
 }
-// ── عرض التحضير: قائد القطاع/مسؤول التحضير = قطاعه كامل | الشرطة العسكرية = كل القطاعات (غياب اليوم فقط) ──
+// ── عرض التحضير: قائد القطاع/مسؤول التحضير = قطاعه كامل | الشؤون العسكرية = كل القطاعات (غياب اليوم فقط) ──
 app.get("/api/att-view", ensureAttViewer, async (req, res) => {
     try {
         const sc = req.attScope;
@@ -9017,10 +9070,6 @@ app.get("/api/att-view", ensureAttViewer, async (req, res) => {
                 out.sectors.push({ key, label: CONFIG.SECTORS[key], present: members.filter(m => m.status === "in").length, members });
             }
         }
-        // غياب اليوم (آخر استلام اليوم): للشرطة كل القطاعات، وللقادة قطاعاتهم
-        const absKeys = sc.absentTodayOnly ? Object.keys(CONFIG.SECTORS) : fullSectors;
-        const rows = await RecRow.find({ dayKey: { $gte: ds.getTime() }, kind: "absent", removedAt: null, sectorKey: { $in: absKeys } }).sort({ sectorKey: 1, name: 1 }).limit(2000).maxTimeMS(10000).lean();
-        out.absentToday = rows.map(r => ({ uid: r.uid, name: r.name, unit: r.unit, rank: r.rank, sector: r.sector, excuseStatus: r.excuseStatus }));
         res.json(out);
     } catch (e) {
         console.error("❌ att-view:", e.message);
@@ -9118,22 +9167,6 @@ app.get("/api/senior/att/absent", ensureSeniorAdmin, async (req, res) => {
     const d = parseInt(req.query.days, 10);
     const days = [1, 3, 7, 14].includes(d) ? d : 3;
     const now = new Date();
-    if (days === 1) {
-        const rd = await RecDay.findOne({ openedAt: { $gte: attDayStart(now) }, status: { $ne: "open" } }).sort({ openedAt: -1 }).lean();
-        if (rd) {
-            const rows = await RecRow.find({ dayKey: rd.dayKey }).limit(5000).maxTimeMS(10000).lean();
-            const slim = r => ({ uid: r.uid, name: r.name, unit: r.unit, rank: r.rank, sector: r.sector, deducted: r.deducted, refunded: r.refunded, excuseStatus: r.excuseStatus, onLeave: r.kind === "leave", lastCheckInAt: null });
-            const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar");
-            const attended = rows.filter(r => r.kind === "attended").map(slim).sort(byName);
-            const absentRows = rows.filter(r => r.kind === "absent").map(slim).sort(byName);
-            const leaveRows = rows.filter(r => r.kind === "leave").map(slim).sort(byName);
-            return res.json({
-                days, total: rows.length, absentCount: absentRows.length,
-                reception: { dayKey: rd.dayKey, openedAt: rd.openedAt, openedByName: rd.openedByName, closedAt: rd.closedAt || null, closedByName: rd.closedByName || null, attendedCount: attended.length, absentCount: absentRows.length, leaveCount: leaveRows.length },
-                attended, list: absentRows.concat(leaveRows),
-            });
-        }
-    }
     const since = new Date(attDayStart(now).getTime() - (days - 1) * ATT_DAY_MS);
     const [accs, ps, sts, leaves] = await Promise.all([
         Account.find({ status: "approved" }, { uid: 1, fullName: 1, sector: 1, isSenior: 1, isOwner: 1, tempSenior: 1 }).limit(5000).maxTimeMS(10000).lean(),
@@ -9388,415 +9421,6 @@ app.post("/api/hc/att-violations/:id/decide", ensureHighCommand, async (req, res
 });
 
 
-const RecDay = mongoose.model("RecDay", new mongoose.Schema({
-    dayKey: { type: Number, unique: true }, openedAt: Date, openedBy: String, openedByName: String,
-    status: { type: String, default: "closed" }, // open = الاستلام مفتوح الحين • closed = انسكّر وانحسبت الغيابات
-    closedAt: Date, closedBy: String, closedByName: String,
-}));
-const RecRowSchema = new mongoose.Schema({
-    dayKey: { type: Number, index: true }, uid: String, name: String, unit: String, rank: String,
-    sector: String, sectorKey: String, kind: String,
-    gained: { type: Number, default: 0 }, deducted: { type: Number, default: 0 }, refunded: { type: Number, default: 0 },
-    excuseStatus: { type: String, default: "none" }, excuseId: { type: String, default: null }, openedAt: Date,
-    removedAt: Date, removedBy: String, removedByName: String,
-});
-RecRowSchema.index({ dayKey: 1, uid: 1 }, { unique: true });
-const RecRow = mongoose.model("RecRow", RecRowSchema);
-const AbsenceExcuseSchema = new mongoose.Schema({
-    rowId: String, dayKey: Number, uid: String, name: String, unit: String, rank: String, sector: String, sectorKey: String,
-    type: { type: String, enum: ["medical", "nonmedical"], default: "nonmedical" },
-    reason: String, proof: { type: String, default: null }, proofChannelId: { type: String, default: null }, proofMessageId: { type: String, default: null }, hasProof: { type: Boolean, default: false },
-    status: { type: String, enum: ["pending", "deciding", "accepted", "rejected"], default: "pending" },
-    rejectReason: { type: String, default: null }, absenceAt: Date,
-    oathText: { type: String, default: null },
-    audio: { type: Buffer, default: undefined }, audioChannelId: { type: String, default: null }, audioMessageId: { type: String, default: null },
-    audioMime: { type: String, default: null }, audioDuration: { type: Number, default: null }, audioWave: { type: String, default: null }, hasAudio: { type: Boolean, default: false },
-    decidedBy: String, decidedByName: String, decidedAt: Date, refunded: { type: Number, default: 0 },
-    createdAt: { type: Date, default: Date.now },
-});
-AbsenceExcuseSchema.index({ uid: 1, createdAt: -1 });
-const AbsenceExcuse = mongoose.model("AbsenceExcuse", AbsenceExcuseSchema);
-
-const EXCUSE_WINDOW_DAYS = 14;
-const EXCUSE_TYPE_LABEL = { medical: "طبي", nonmedical: "بدون طبي" };
-
-// فتح الاستلام: بس يسجّل إنه مفتوح (ما يحسب غياب الحين)
-async function openReceptionDay(openerId, openerName) {
-    const now = new Date();
-    const dayKey = now.getTime(); // كل استلام له مفتاح خاص (يتكرر باليوم أكثر من مرة)
-    try { await RecDay.create({ dayKey, openedAt: now, openedBy: openerId, openedByName: openerName, status: "open" }); }
-    catch (e) { return null; }
-    return { dayKey, openedAt: now };
-}
-
-// حالة الاستلام اليوم (مفتوح الحين؟ / انتهى اليوم؟) — ولو في استلام قديم نسوا يسكرونه ينسكّر بدون حساب
-async function getReceptionState() {
-    const now = new Date();
-    await RecDay.updateMany({ status: "open", openedAt: { $lt: attDayStart(now) } }, { $set: { status: "closed", closedAt: now, closedByName: "تلقائي" } }).catch(() => {});
-    const rd = await RecDay.findOne({ status: "open" }, { openedAt: 1, openedByName: 1 }).sort({ openedAt: -1 }).lean();
-    return { open: rd ? { openedAt: rd.openedAt, openedByName: rd.openedByName } : null };
-}
-
-// إغلاق الاستلام: هنا بس يحسب الحضور والغياب وقتها
-async function closeReceptionDay(closerId, closerName) {
-    const now = new Date();
-    const rd = await RecDay.findOneAndUpdate(
-        { status: "open" },
-        { $set: { status: "closed", closedAt: now, closedBy: closerId, closedByName: closerName } },
-        { new: true, sort: { openedAt: -1 } }
-    );
-    if (!rd) return null;
-    const dayKey = rd.dayKey;
-    const settings = await getSettings();
-    const [accs, ps, sts, leaves] = await Promise.all([
-        Account.find({ status: "approved" }, { uid: 1, sector: 1, isSenior: 1, isOwner: 1, tempSenior: 1 }).limit(5000).maxTimeMS(10000).lean(),
-        Personnel.find({}, { discord: 1, registeredName: 1, unit: 1, rank: 1, sector: 1, points: 1, isDismissed: 1, isBlocked: 1 }).limit(5000).maxTimeMS(10000).lean(),
-        AttStatus.find({}, { uid: 1, status: 1 }).limit(5000).maxTimeMS(10000).lean(),
-        LeaveRequest.find({ status: "approved" }, { discord: 1, endDate: 1 }).limit(5000).maxTimeMS(10000).lean(),
-    ]);
-    const pm = new Map(ps.map(p => [p.discord, p]));
-    const sm = new Map(sts.map(s => [s.uid, s]));
-    const lv = new Set(leaves.filter(l => !l.endDate || l.endDate > now).map(l => l.discord));
-    // اللي حضر وقعد 15 دقيقة على الأقل بعد فتح الاستلام وسوا انصراف قبل الإغلاق = يحسب حاضر (مو غياب)
-    const REC_MIN_STAY_MS = 15 * 60 * 1000;
-    const stayed = new Set();
-    try {
-        const winS = new Date(rd.openedAt).getTime(), winE = now.getTime();
-        const logs = await AttLog.find({ at: { $gte: new Date(winS - ATT_SESSION_CAP) } }, { uid: 1, type: 1, at: 1 }).sort({ at: 1 }).limit(60000).maxTimeMS(10000).lean();
-        const cur = new Map();
-        for (const l of logs) {
-            const tt = new Date(l.at).getTime();
-            if (l.type === "in") { if (!cur.has(l.uid)) cur.set(l.uid, tt); }
-            else if (l.type === "out") {
-                const s0 = cur.get(l.uid);
-                if (s0 !== undefined) {
-                    const ov = Math.min(tt, winE) - Math.max(s0, tt - ATT_SESSION_CAP, winS);
-                    if (ov >= REC_MIN_STAY_MS) stayed.add(l.uid);
-                    cur.delete(l.uid);
-                }
-            }
-        }
-    } catch (e) { console.error("❌ فشل حساب مدة بقاء الاستلام:", e.message); }
-    const rows = [], ops = [];
-    let attended = 0, absent = 0, leave = 0;
-    for (const a of accs) {
-        if (a.isSenior || a.isOwner || a.tempSenior || isSeniorAdmin(a.uid) || isHighCommand(a.uid, settings)) continue;
-        const p = pm.get(a.uid);
-        if (!p || !p.registeredName || p.isDismissed || p.isBlocked) continue;
-        const key = a.sector || p.sector || null;
-        if (!p.unit || !key) continue;
-        const st = sm.get(a.uid);
-        const base = { dayKey, uid: a.uid, name: p.registeredName, unit: p.unit, rank: p.rank, sector: CONFIG.SECTORS[key] || null, sectorKey: key, openedAt: rd.openedAt };
-        if ((st && st.status === "in") || stayed.has(a.uid)) {
-            rows.push({ ...base, kind: "attended", gained: 1 });
-            ops.push({ updateOne: { filter: { discord: a.uid }, update: { $inc: { points: 1 } } } });
-            attended++;
-        } else if (lv.has(a.uid)) {
-            rows.push({ ...base, kind: "leave" });
-            leave++;
-        } else {
-            const ded = 2; // خصم ثابت نقطتين حتى لو رصيده 0 أو 1 (يصير بالسالب)
-            rows.push({ ...base, kind: "absent", deducted: ded, excuseStatus: "none" });
-            if (ded) ops.push({ updateOne: { filter: { discord: a.uid }, update: { $inc: { points: -ded } } } });
-            absent++;
-        }
-    }
-    if (rows.length) await RecRow.insertMany(rows, { ordered: false }).catch(e => console.error("❌ فشل حفظ حضور الاستلام:", e.message));
-    if (ops.length) await Personnel.bulkWrite(ops, { ordered: false }).catch(e => console.error("❌ فشل تحديث نقاط الاستلام:", e.message));
-    (async () => {
-        for (const r of rows) {
-            if (r.kind !== "absent") continue;
-            await pushUid(r.uid, { title: CONFIG.SITE_NAME, body: "غبت عن الاستلام" + (r.deducted ? " وانخصم عليك " + r.deducted + " نقطة" : "") + "", ttl: 3600, tag: "recabs" }).catch(() => {});
-        }
-    })();
-    await logEvent({ action: "إغلاق استلام وحساب الغيابات", actorId: closerId, details: "حضروا " + attended + " (+1) • غابوا " + absent + " (-2) • إجازة " + leave });
-    return { attended, absent, leave };
-}
-
-app.get("/api/excuse/my", ensureAuth, async (req, res) => {
-    const since = attDayStart(new Date()).getTime() - (EXCUSE_WINDOW_DAYS - 1) * ATT_DAY_MS;
-    const rows = await RecRow.find({ uid: req.user.id, kind: "absent", dayKey: { $gte: since } }).sort({ dayKey: -1 }).limit(60).lean();
-    const ids = rows.map(r => r.excuseId).filter(Boolean);
-    const exs = ids.length ? await AbsenceExcuse.find({ _id: { $in: ids } }, { proof: 0, audio: 0 }).lean() : [];
-    const em = new Map(exs.map(e => [String(e._id), e]));
-    res.json({
-        list: rows.map(r => {
-            const e = r.excuseId ? em.get(String(r.excuseId)) : null;
-            return {
-                rowId: String(r._id), openedAt: r.openedAt, deducted: r.deducted, refunded: r.refunded, excuseStatus: r.excuseStatus,
-                excuse: e ? { type: e.type, reason: e.reason, status: e.status, rejectReason: e.rejectReason, createdAt: e.createdAt, decidedAt: e.decidedAt, hasProof: !!e.hasProof } : null,
-            };
-        }),
-    });
-});
-
-app.post("/api/excuse/submit", ensureAuth, async (req, res) => {
-    return res.status(410).json({ error: "ميزة غياب بعذر غير متوفرة" });
-    const b = req.body || {};
-    const rowId = String(b.rowId || "");
-    const reason = String(b.reason || "").trim().slice(0, 500);
-    const type = b.type === "medical" ? "medical" : b.type === "nonmedical" ? "nonmedical" : null;
-    if (!mongoose.Types.ObjectId.isValid(rowId)) return res.status(404).json({ error: "غير موجود" });
-    if (reason.length < 3) return res.status(400).json({ error: "اكتب العذر" });
-    if (!type) return res.status(400).json({ error: "حدد نوع العذر (طبي أو بدون طبي)" });
-    let proof = null;
-    if (!b.proof) return res.status(400).json({ error: "لازم ترفق دليل (صورة) للعذر" });
-    proof = String(b.proof);
-    if (!/^data:image\/(jpeg|png|webp);base64,/.test(proof) || proof.length > 2500000) return res.status(400).json({ error: "الدليل لازم يكون صورة وحجمها صغير" });
-    if (b.oath !== true) return res.status(400).json({ error: "لازم توافق على القسم وتقوله" });
-    const audioIn = supportCleanAudio(b);
-    if (!audioIn) return res.status(400).json({ error: "لازم تسجّل القسم بصوتك (تسجيل صوتي صالح)" });
-    let proofCh = null, proofMsg = null;
-    if (proof) {
-        const up = await discordSaveImage(proof, "excuse");
-        if (up) { proofCh = up.channelId; proofMsg = up.messageId; proof = null; }
-    }
-    const hadProof = !!(proof || proofMsg);
-    const audioFields = await supportAudioFields(audioIn);
-    const since = attDayStart(new Date()).getTime() - (EXCUSE_WINDOW_DAYS - 1) * ATT_DAY_MS;
-    const row = await RecRow.findOneAndUpdate(
-        { _id: rowId, uid: req.user.id, kind: "absent", excuseStatus: "none", dayKey: { $gte: since } },
-        { $set: { excuseStatus: "pending" } }, { new: true });
-    if (!row) return res.status(409).json({ error: "ما تقدر تقدم عذر على هذا الغياب" });
-    let ex;
-    try {
-        ex = await AbsenceExcuse.create({
-            rowId: String(row._id), dayKey: row.dayKey, uid: row.uid, name: row.name, unit: row.unit, rank: row.rank,
-            sector: row.sector, sectorKey: row.sectorKey, type, reason, proof, proofChannelId: proofCh, proofMessageId: proofMsg, hasProof: hadProof, absenceAt: row.openedAt,
-            oathText: "أُقسم بالله العظيم، أنا (" + row.name + ")، بأن العذر الذي تقدمت به بشأن غيابي وهو (" + reason + ") صحيح، وأتحمل كامل المسؤولية عن صحة ما ذكرته، وأتعهد بعدم تقديم أي عذر غير صحيح، والله على ما أقول شهيد.",
-            hasAudio: true, ...audioFields,
-        });
-        await RecRow.updateOne({ _id: row._id }, { $set: { excuseId: String(ex._id) } });
-    } catch (e) {
-        await RecRow.updateOne({ _id: row._id }, { $set: { excuseStatus: "none" } });
-        return res.status(500).json({ error: "تعذر إرسال العذر، حاول مرة ثانية" });
-    }
-    const settings = await getSettings();
-    const sec = (settings.sectorLeadership && row.sectorKey && settings.sectorLeadership[row.sectorKey]) || {};
-    const targets = Array.from(new Set([sec.commanderId, sec.deputyId, sec.personnelOfficerId].filter(x => x && x !== req.user.id)));
-    const text = "🩺 تنبيه: العضو " + row.name + " (" + (row.rank || "-") + " • " + (row.unit || "-") + ") قدّم عذر غياب عن الاستلام — النوع: " + EXCUSE_TYPE_LABEL[type] + " — السبب: " + reason.slice(0, 150) + " — القرار عند القيادة العليا.";
-    for (const t of targets) {
-        await pushNoticeTo(t, text, "auto", "🤖 نظام الاستلام");
-        pushUid(t, { title: CONFIG.SITE_NAME, body: "🩺 عذر غياب جديد من " + row.name, ttl: 86400, tag: "excuse-" + String(ex._id) }).catch(() => {});
-    }
-    const hcIds = new Set([...(settings.highCommand || []).map(m => m.id), ...Array.from(seniorUids)]);
-    for (const id of hcIds) pushUid(id, { title: CONFIG.SITE_NAME, body: "🩺 عذر غياب جديد من " + row.name + " ينتظر قرارك", ttl: 86400, tag: "excuse-hc-" + String(ex._id) }).catch(() => {});
-    if (hcIds.size) sseBroadcast("hcalert", { t: Date.now(), exc: true }, c => !!c.uid && hcIds.has(c.uid));
-    await logEvent({ action: "تقديم عذر غياب", discordId: req.user.id, discordTag: req.user.username, actorId: req.user.id, actorTag: req.user.username, details: row.name + " — " + EXCUSE_TYPE_LABEL[type] });
-    res.json({ ok: true });
-});
-
-app.get("/api/hc/excuses", ensureHighCommand, async (req, res) => {
-    const f = String(req.query.filter || "pending");
-    const q = f === "pending" ? { status: { $in: ["pending", "deciding"] } } : { status: { $in: ["accepted", "rejected"] } };
-    const [list, pendingCount] = await Promise.all([
-        AbsenceExcuse.find(q, { proof: 0, audio: 0 }).sort({ createdAt: -1 }).limit(200).lean(),
-        AbsenceExcuse.countDocuments({ status: "pending" }),
-    ]);
-    res.json({ list, pendingCount });
-});
-app.get("/api/hc/excuses/:id/audio", ensureHighCommand, async (req, res) => {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).end();
-    const ex = await AbsenceExcuse.findById(req.params.id, { audio: 1, audioMime: 1, audioChannelId: 1, audioMessageId: 1 }).lean();
-    if (!ex) return res.status(404).end();
-    if (!(ex.audio && ex.audio.length) && ex.audioChannelId && ex.audioMessageId) {
-        try {
-            const u = await discordImageUrl(ex.audioChannelId, ex.audioMessageId, "exv:" + String(ex._id));
-            if (u) return res.redirect(u);
-        } catch (e) { console.error("❌ فشل جلب صوت القسم:", e.message); }
-        return res.status(503).end();
-    }
-    if (!(ex.audio && ex.audio.length)) return res.status(404).end();
-    const buf = Buffer.from(ex.audio.buffer ? ex.audio.buffer : ex.audio);
-    res.set({ "Content-Type": ex.audioMime || "audio/webm", "Cache-Control": "private, max-age=3600", "Content-Length": buf.length });
-    res.end(buf);
-});
-app.get("/api/hc/excuses/:id/proof", ensureHighCommand, async (req, res) => {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "غير موجود" });
-    const ex = await AbsenceExcuse.findById(req.params.id, { proof: 1, proofChannelId: 1, proofMessageId: 1 }).lean();
-    if (!ex) return res.status(404).json({ error: "ما فيه دليل" });
-    if (ex.proofChannelId && ex.proofMessageId) {
-        try {
-            const u = await discordImageUrl(ex.proofChannelId, ex.proofMessageId, "excuse:" + String(ex._id));
-            if (u) return res.json({ image: u });
-        } catch (e) {
-            console.error("❌ فشل جلب دليل العذر من ديسكورد:", e.message);
-            if (!ex.proof) return res.status(503).json({ error: "تعذر جلب الصورة من ديسكورد حالياً، حاول مرة ثانية بعد شوي" });
-        }
-    }
-    if (!ex.proof) return res.status(404).json({ error: "ما فيه دليل" });
-    res.json({ image: ex.proof });
-});
-async function tellExcuseResult(ex, text) {
-    await pushNoticeTo(ex.uid, text, "auto", "🤖 نظام الاستلام");
-    pushUid(ex.uid, { title: CONFIG.SITE_NAME, body: text.slice(0, 120), ttl: 86400, tag: "excuse-res-" + String(ex._id) }).catch(() => {});
-}
-app.post("/api/hc/excuses/:id/accept", ensureHighCommand, async (req, res) => {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "غير موجود" });
-    const ex = await AbsenceExcuse.findOneAndUpdate({ _id: req.params.id, status: "pending" }, { $set: { status: "deciding" } }, { new: true });
-    if (!ex) return res.status(409).json({ error: "تم اتخاذ قرار على هذا العذر من قبل" });
-    try {
-        const row = await RecRow.findById(ex.rowId);
-        const refund = row ? (row.deducted || 0) : 0;
-        const now = new Date();
-        const byName = await cyName(req.user.id);
-        const upd = { $push: { excusedAbsences: { excuseId: String(ex._id), type: ex.type, absenceAt: row ? row.openedAt : ex.createdAt, approvedAt: now, approvedByName: byName } } };
-        if (refund) upd.$inc = { points: refund };
-        await Personnel.updateOne({ discord: ex.uid }, upd);
-        if (row) await RecRow.updateOne({ _id: row._id }, { $set: { excuseStatus: "accepted", deducted: 0, refunded: refund } });
-        await AbsenceExcuse.updateOne({ _id: ex._id }, { $set: { status: "accepted", decidedBy: req.user.id, decidedByName: byName, decidedAt: now, refunded: refund } });
-        await logEvent({ action: "قبول عذر غياب", discordId: ex.uid, actorId: req.user.id, actorTag: req.user.username, details: ex.name + (refund ? " — رجعت " + refund + " نقطة" : "") });
-        await tellExcuseResult(ex, "✅ تم قبول عذر غيابك عن الاستلام" + (refund ? " ورجعت لك " + refund + " نقطة" : "") + " — تسجّل في ملفك كغياب بعذر.");
-        res.json({ ok: true, refunded: refund });
-    } catch (e) {
-        await AbsenceExcuse.updateOne({ _id: ex._id, status: "deciding" }, { $set: { status: "pending" } });
-        res.status(400).json({ error: e.message });
-    }
-});
-app.post("/api/hc/excuses/:id/reject", ensureHighCommand, async (req, res) => {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "غير موجود" });
-    const reason = String((req.body || {}).reason || "").trim().slice(0, 300);
-    if (!reason) return res.status(400).json({ error: "اكتب سبب الرفض" });
-    const ex = await AbsenceExcuse.findOneAndUpdate({ _id: req.params.id, status: "pending" }, { $set: { status: "deciding" } }, { new: true });
-    if (!ex) return res.status(409).json({ error: "تم اتخاذ قرار على هذا العذر من قبل" });
-    try {
-        const byName = await cyName(req.user.id);
-        await RecRow.updateOne({ _id: ex.rowId }, { $set: { excuseStatus: "rejected" } });
-        await AbsenceExcuse.updateOne({ _id: ex._id }, { $set: { status: "rejected", rejectReason: reason, decidedBy: req.user.id, decidedByName: byName, decidedAt: new Date() } });
-        await logEvent({ action: "رفض عذر غياب", discordId: ex.uid, actorId: req.user.id, actorTag: req.user.username, details: ex.name + " — " + reason });
-        await tellExcuseResult(ex, "❌ تم رفض عذر غيابك عن الاستلام وتثبّت الخصم — السبب: " + reason);
-        res.json({ ok: true });
-    } catch (e) {
-        await AbsenceExcuse.updateOne({ _id: ex._id, status: "deciding" }, { $set: { status: "pending" } });
-        res.status(400).json({ error: e.message });
-    }
-});
-
-// ---------- إزالة الغياب (للمالك فقط) ----------
-app.post("/api/owner/att/remove-absence", ensureSeniorAdmin, async (req, res) => {
-    if (!isOwnerUid(req.user.id)) return res.status(403).json({ error: "غير مصرح" });
-    const b = req.body || {};
-    const dayKey = Number(b.dayKey);
-    if (!Number.isFinite(dayKey)) return res.status(400).json({ error: "حدد الاستلام" });
-    const mode = b.mode === "all" ? "all" : b.mode === "except" ? "except" : null;
-    if (!mode) return res.status(400).json({ error: "حدد الكل أو مستثنى" });
-    const except = new Set(mode === "except" && Array.isArray(b.exceptUids) ? b.exceptUids.map(String) : []);
-    const rd = await RecDay.findOne({ dayKey }).lean();
-    if (!rd || rd.status === "open") return res.status(409).json({ error: "الاستلام ما انسكّر بعد" });
-    const OK = ["none", "pending", "rejected"];
-    const rows = await RecRow.find({ dayKey, kind: "absent", excuseStatus: { $in: OK } }, { uid: 1 }).limit(5000).lean();
-    const targets = rows.filter(r => !except.has(r.uid));
-    if (!targets.length) return res.status(400).json({ error: "ما فيه غايبين تنشال عنهم" });
-    const now = new Date();
-    const byName = await cyName(req.user.id);
-    let removed = 0, refundedTotal = 0;
-    const done = [];
-    for (const t of targets) {
-        try {
-            const old = await RecRow.findOneAndUpdate(
-                { _id: t._id, kind: "absent", excuseStatus: { $in: OK } },
-                { $set: { excuseStatus: "removed", deducted: 0, removedAt: now, removedBy: req.user.id, removedByName: byName } },
-                { new: false }
-            );
-            if (!old) continue;
-            const ded = old.deducted || 0;
-            if (ded) await RecRow.updateOne({ _id: old._id }, { $set: { refunded: ded } });
-            if (old.excuseStatus === "pending" && old.excuseId) {
-                await AbsenceExcuse.updateOne({ _id: old.excuseId, status: "pending" }, { $set: { status: "rejected", rejectReason: "أُزيل الغياب من المالك", decidedBy: req.user.id, decidedByName: byName, decidedAt: now } });
-            }
-            const upd = { $push: { removedAbsences: { dayKey, absenceAt: old.openedAt || rd.openedAt, removedAt: now, removedByName: byName, refunded: ded } } };
-            if (ded) upd.$inc = { points: ded };
-            await Personnel.updateOne({ discord: old.uid }, upd);
-            removed++; refundedTotal += ded;
-            done.push({ uid: old.uid, name: old.name, ded });
-        } catch (e) { console.error("❌ فشل إزالة غياب:", e.message); }
-    }
-    await logEvent({ action: "إزالة غياب", actorId: req.user.id, actorTag: req.user.username, details: "أُزيل الغياب عن " + removed + " (رجعت " + refundedTotal + " نقطة)" + (except.size ? " • مستثنى " + except.size : "") });
-    (async () => {
-        for (const x of done) {
-            const text = "🧹 تم إزالة غيابك عن الاستلام" + (x.ded ? " ورجعت لك " + x.ded + " نقطة" : "") + " — وانسجّل في ملفك.";
-            await pushNoticeTo(x.uid, text, "auto", "🤖 نظام الاستلام");
-            pushUid(x.uid, { title: CONFIG.SITE_NAME, body: text.slice(0, 120), ttl: 86400, tag: "rmabs-" + dayKey }).catch(() => {});
-        }
-    })();
-    res.json({ ok: true, removed, refunded: refundedTotal, skipped: except.size });
-});
-
-// ---------- مسؤولو الاستلامات + زر فتح استلام ----------
-function isReceptionOfficer(uid, settings) { return !!(settings && (settings.receptionOfficers || []).some(m => m.id === uid)); }
-app.get("/api/senior/reception", ensureSeniorAdmin, async (req, res) => {
-    const s = await getSettings();
-    res.json({ list: s.receptionOfficers || [] });
-});
-app.post("/api/senior/reception/add", ensureSeniorAdmin, async (req, res) => {
-    const discordId = String((req.body || {}).discordId || "").trim();
-    if (!discordId) return res.status(400).json({ error: "حدد الشخص" });
-    const person = await Personnel.findOne({ discord: discordId });
-    if (!person || !person.registeredName) return res.status(400).json({ error: "لازم يكون هذا الشخص مسجل بالموقع" });
-    const s = await getSettings();
-    if (!s.receptionOfficers) s.receptionOfficers = [];
-    if (s.receptionOfficers.some(m => m.id === person.discord)) return res.status(400).json({ error: "موجود من قبل" });
-    s.receptionOfficers.push({ id: person.discord, name: person.registeredName || person.discordTag });
-    s.markModified("receptionOfficers");
-    await s.save();
-    await logEvent({ action: "إضافة مسؤول استلامات", discordId: person.discord, discordTag: person.discordTag, actorId: req.user.id, actorTag: req.user.username, details: person.registeredName });
-    res.json({ ok: true, list: s.receptionOfficers });
-});
-app.post("/api/senior/reception/remove", ensureSeniorAdmin, async (req, res) => {
-    const discordId = String((req.body || {}).discordId || "");
-    const s = await getSettings();
-    const removed = (s.receptionOfficers || []).find(m => m.id === discordId);
-    s.receptionOfficers = (s.receptionOfficers || []).filter(m => m.id !== discordId);
-    s.markModified("receptionOfficers");
-    await s.save();
-    await logEvent({ action: "إزالة مسؤول استلامات", actorId: req.user.id, actorTag: req.user.username, details: (removed && removed.name) || discordId });
-    res.json({ ok: true, list: s.receptionOfficers });
-});
-function riyadhHour() {
-    const h = parseInt(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", hour12: false }).format(new Date()), 10);
-    return h % 24;
-}
-let lastReceptionAt = 0;
-app.post("/api/reception/open", ensureAuth, async (req, res) => {
-    return res.status(410).json({ error: "فتح الاستلام غير متوفر" });
-    const settings = await getSettings();
-    const isSr = isSeniorAdmin(req.user.id); // الكبار: يفتحون الاستلام بأي وقت وبدون بصمة
-    if (!isSr && !isReceptionOfficer(req.user.id, settings)) return res.status(403).json({ error: "هذا الزر لمسؤولي الاستلامات فقط" });
-    const att = await getAttState(req.user.id);
-    if (!isSr && att.status !== "in") return res.status(403).json({ error: "🖐️ سجّل حضورك بالبصمة أول", needAttendance: true });
-    const h = riyadhHour();
-    if (!isSr && (h < CONFIG.RECEPTION_START_HOUR || h >= CONFIG.RECEPTION_END_HOUR)) return res.status(400).json({ error: "⏰ مو وقت الاستلام — الاستلام من الساعة 2 العصر إلى 9 الليل" });
-    const state = await getReceptionState();
-    if (state.open) return res.status(409).json({ error: "الاستلام مفتوح الحين", receptionOpen: state.open });
-    const opened = await openReceptionDay(req.user.id, await cyName(req.user.id));
-    if (!opened) return res.status(409).json({ error: "الاستلام انفتح قبل شوي" });
-    const r = await pushAll({ title: CONFIG.SITE_NAME, body: "استلام الان", ttl: 900, tag: "reception" });
-    let discord = false;
-    if (botReady) {
-        try {
-            const ch = await client.channels.fetch(CONFIG.RECEPTION_CHANNEL_ID);
-            await ch.send({ content: "استلام @everyone", allowedMentions: { parse: ["everyone"] } });
-            discord = true;
-        } catch (e) { console.error("❌ فشل إرسال رسالة الاستلام للديسكورد:", e.message); }
-    }
-    await logEvent({ action: "فتح استلام", actorId: req.user.id, actorTag: req.user.username, details: "إشعار وصل لـ " + r.sent + " جهاز" + (discord ? " + ديسكورد" : "") });
-    res.json({ ok: true, sent: r.sent, discord, receptionOpen: { openedAt: opened.openedAt, openedByName: await cyName(req.user.id) } });
-});
-app.post("/api/reception/close", ensureAuth, async (req, res) => {
-    const settings = await getSettings();
-    const isSr = isSeniorAdmin(req.user.id);
-    if (!isSr && !isReceptionOfficer(req.user.id, settings)) return res.status(403).json({ error: "هذا الزر لمسؤولي الاستلامات فقط" });
-    const att = await getAttState(req.user.id);
-    if (!isSr && att.status !== "in") return res.status(403).json({ error: "🖐️ سجّل حضورك بالبصمة أول", needAttendance: true });
-    const state = await getReceptionState();
-    if (!state.open) return res.status(409).json({ error: "الاستلام مو مفتوح الحين", receptionOpen: null });
-    let rec = null;
-    try { rec = await closeReceptionDay(req.user.id, await cyName(req.user.id)); }
-    catch (e) { console.error("❌ فشل إغلاق الاستلام:", e.message); return res.status(500).json({ error: "صار خطأ وقت إغلاق الاستلام" }); }
-    if (!rec) return res.status(409).json({ error: "الاستلام انسكّر قبل شوي", receptionOpen: null });
-    res.json({ ok: true, rec });
-});
-
 // ---------- تردد القطاعات المشتركة (روم صوتي 910..919) ----------
 const FreqRoom = mongoose.model("FreqRoom", new mongoose.Schema({
     n: { type: Number, unique: true }, name: String, createdBy: String, createdAt: { type: Date, default: Date.now },
@@ -9959,7 +9583,7 @@ app.get("/api/court/state", ensureAuth, async (req, res) => {
     }
     res.json(out);
 });
-// فتح تحقيق: لازم يوم وساعة ودقيقة. القيادة والكبار ينحدد الموعد على طول، وعضو الشرطة العسكرية العادي يروح الطلب للقيادة
+// فتح تحقيق: لازم يوم وساعة ودقيقة. القيادة والكبار ينحدد الموعد على طول، وعضو الشؤون العسكرية العادي يروح الطلب للقيادة
 app.post("/api/court/start", ensureAuth, async (req, res) => {
     const r = await courtRole(req.user.id);
     if (!r.staff) return res.status(403).json({ error: "المحكمة العسكرية للشرطة العسكرية وكبار المسؤولين فقط" });
@@ -9992,10 +9616,10 @@ app.post("/api/court/start", ensureAuth, async (req, res) => {
             if (!jc) return res.status(404).json({ error: (kind === "inv" ? "هذا التحقيق" : "هذي المحكمة") + " ما يقبل الضم حالياً" });
             const jName = await cyName(targetUid), byN = await cyActor(req);
             if (!dir && jc.status !== "pending") {
-                // عضو شرطة عسكرية عادي: ضم لتحقيق/محكمة مجدولة أو جارية يروح كطلب للقيادة (نفس نظام المحكمة)
+                // عضو شؤون عسكرية عادي: ضم لتحقيق/محكمة مجدولة أو جارية يروح كطلب للقيادة (نفس نظام المحكمة)
                 const rq = await CourtCase.create({ status: "pending", targetUid, targetName: jName, reason, startedBy: req.user.id, startedByName: byN, startedByRole: "mp", at: jc.at || new Date(), kind, joinTo: String(jc._id) });
                 courtNotifyLeaders(courtIcon(rq) + " " + byN + " طلب ضم " + jName + " إلى " + courtWord(rq) + " " + (jc.status === "active" ? "جاري" : "مجدول") + " مع " + courtTargetNames(jc));
-                await logEvent({ action: "طلب ضم لـ" + courtWord(rq), discordId: targetUid, actorId: req.user.id, actorTag: byN + " (الشرطة العسكرية)", details: jName + " ← " + courtTargetNames(jc) });
+                await logEvent({ action: "طلب ضم لـ" + courtWord(rq), discordId: targetUid, actorId: req.user.id, actorTag: byN + " (الشؤون العسكرية)", details: jName + " ← " + courtTargetNames(jc) });
                 courtPush(targetUid);
                 courtTick();
                 return res.json({ ok: true, id: String(rq._id), status: "pending", kind, requested: true });
@@ -10028,7 +9652,7 @@ app.post("/api/court/start", ensureAuth, async (req, res) => {
     } else {
         courtNotifyLeaders(courtIcon(c) + " طلب " + courtWord(c) + " جديد من " + byName + " على " + targetName + " — الموعد: " + (startNow ? "الحين" : courtFmt(at)));
     }
-    await logEvent({ action: (kind === "inv" ? (direct ? "فتح تحقيق عسكري" : "طلب تحقيق عسكري") : (direct ? "تحديد موعد محكمة عسكرية" : "طلب تحقيق بالمحكمة العسكرية")), discordId: targetUid, actorId: req.user.id, actorTag: byName + (r.senior ? " (كبار المسؤولين)" : r.leader ? " (قيادة الشرطة العسكرية)" : " (الشرطة العسكرية)"), details: targetName + " — " + courtFmt(at) + (reason ? " — " + reason : "") });
+    await logEvent({ action: (kind === "inv" ? (direct ? "فتح تحقيق عسكري" : "طلب تحقيق عسكري") : (direct ? "تحديد موعد محكمة عسكرية" : "طلب تحقيق بالمحكمة العسكرية")), discordId: targetUid, actorId: req.user.id, actorTag: byName + (r.senior ? " (كبار المسؤولين)" : r.leader ? " (قيادة الشؤون العسكرية)" : " (الشؤون العسكرية)"), details: targetName + " — " + courtFmt(at) + (reason ? " — " + reason : "") });
     courtPush(targetUid);
     courtTick();
     res.json({ ok: true, id: String(c._id), status: c.status, kind });
@@ -10040,7 +9664,7 @@ async function courtAccess(req, res, needLead) {
     const r = await courtRole(req.user.id);
     const isT = courtIsTarget(c, req.user.id);
     if (!isT && !r.staff) { res.status(403).json({ error: "ليست لديك صلاحية" }); return null; }
-    if (needLead && (isT || !(r.leader || c.startedBy === req.user.id))) { res.status(403).json({ error: "هذا الإجراء لقيادة الشرطة العسكرية أو اللي فتح التحقيق أو الكبار" }); return null; }
+    if (needLead && (isT || !(r.leader || c.startedBy === req.user.id))) { res.status(403).json({ error: "هذا الإجراء لقيادة الشؤون العسكرية أو اللي فتح التحقيق أو الكبار" }); return null; }
     return { c, r, isT };
 }
 app.get("/api/court/admin/records", ensureSeniorAdmin, async (req, res) => {
@@ -10106,10 +9730,10 @@ app.post("/api/court/:id/end", ensureAuth, async (req, res) => {
     sseBroadcast("courtlock", { t: Date.now() }, cl => courtIsTarget(c, cl.uid));
     res.json({ ok: true });
 });
-// قيادة الشرطة العسكرية: قبول / رفض طلب التحقيق
+// قيادة الشؤون العسكرية: قبول / رفض طلب التحقيق
 app.post("/api/court/:id/approve", ensureAuth, async (req, res) => {
     const x = await courtAccess(req, res, false); if (!x) return;
-    if (x.isT || !x.r.leader) return res.status(403).json({ error: "قبول الطلبات لقيادة الشرطة العسكرية فقط" });
+    if (x.isT || !x.r.leader) return res.status(403).json({ error: "قبول الطلبات لقيادة الشؤون العسكرية فقط" });
     if (x.c.status !== "pending") return res.status(409).json({ error: "هذا الطلب انبت فيه مسبقاً" });
     const b = req.body || {};
     const inv = x.c.kind === "inv";
@@ -10153,7 +9777,7 @@ app.post("/api/court/:id/approve", ensureAuth, async (req, res) => {
                 pushUid(m.uid, { title: CONFIG.SITE_NAME, body: courtSched(upd, upd.at), tag: "court-soon", ttl: 86400 }).catch(() => {});
             }
         });
-        await logEvent({ action: "قبول طلب وضمه لـ" + courtWord(upd), discordId: x.c.targetUid, actorId: req.user.id, actorTag: name + " (قيادة الشرطة العسكرية)", details: courtTargetNames(x.c) + " ← " + courtTargetNames(upd) });
+        await logEvent({ action: "قبول طلب وضمه لـ" + courtWord(upd), discordId: x.c.targetUid, actorId: req.user.id, actorTag: name + " (قيادة الشؤون العسكرية)", details: courtTargetNames(x.c) + " ← " + courtTargetNames(upd) });
         if (x.c.startedBy) pushUid(x.c.startedBy, { title: CONFIG.SITE_NAME, body: "✅ وافقت القيادة وانضم " + x.c.targetName + " لـ" + courtWord(upd) + " قائم", tag: "court-req", ttl: 86400 }).catch(() => {});
         sseBroadcast("courtlock", { t: Date.now() }, cl => mine.some(m => m.uid === cl.uid));
         courtPush(courtTargetUids(upd));
@@ -10163,7 +9787,7 @@ app.post("/api/court/:id/approve", ensureAuth, async (req, res) => {
     const c = await CourtCase.findOneAndUpdate({ _id: x.c._id, status: "pending" }, { $set: { status: "scheduled", at, approvedBy: req.user.id, approvedByName: name } }, { new: true });
     if (!c) return res.status(409).json({ error: "هذا الطلب انبت فيه مسبقاً" });
     courtTargetUids(c).forEach(u => soonCourt.set(u, { id: String(c._id), at: c.at, reason: c.reason || "", kind: c.kind === "inv" ? "inv" : "court" }));
-    await logEvent({ action: inv ? "قبول طلب تحقيق عسكري" : "قبول طلب تحقيق بالمحكمة العسكرية", discordId: c.targetUid, actorId: req.user.id, actorTag: name + " (قيادة الشرطة العسكرية)", details: c.targetName + " — " + courtFmt(c.at) });
+    await logEvent({ action: inv ? "قبول طلب تحقيق عسكري" : "قبول طلب تحقيق بالمحكمة العسكرية", discordId: c.targetUid, actorId: req.user.id, actorTag: name + " (قيادة الشؤون العسكرية)", details: c.targetName + " — " + courtFmt(c.at) });
     if (!(inv && b.now)) courtTargetUids(c).forEach(u => pushUid(u, { title: CONFIG.SITE_NAME, body: courtSched(c, c.at), tag: "court-soon", ttl: 86400 }).catch(() => {}));
     if (c.startedBy) pushUid(c.startedBy, { title: CONFIG.SITE_NAME, body: "✅ وافقت القيادة على طلب " + courtWord(c) + " مع " + c.targetName, tag: "court-req", ttl: 86400 }).catch(() => {});
     sseBroadcast("courtlock", { t: Date.now() }, cl => courtIsTarget(c, cl.uid));
@@ -10173,11 +9797,11 @@ app.post("/api/court/:id/approve", ensureAuth, async (req, res) => {
 });
 app.post("/api/court/:id/reject", ensureAuth, async (req, res) => {
     const x = await courtAccess(req, res, false); if (!x) return;
-    if (x.isT || !x.r.leader) return res.status(403).json({ error: "رفض الطلبات لقيادة الشرطة العسكرية فقط" });
+    if (x.isT || !x.r.leader) return res.status(403).json({ error: "رفض الطلبات لقيادة الشؤون العسكرية فقط" });
     const name = await cyActor(req);
     const c = await CourtCase.findOneAndUpdate({ _id: x.c._id, status: "pending" }, { $set: { status: "rejected", endedAt: new Date(), endedBy: req.user.id, endedByName: name } }, { new: true });
     if (!c) return res.status(409).json({ error: "هذا الطلب انبت فيه مسبقاً" });
-    await logEvent({ action: "رفض طلب " + courtWord(c), discordId: c.targetUid, actorId: req.user.id, actorTag: name + " (قيادة الشرطة العسكرية)", details: c.targetName });
+    await logEvent({ action: "رفض طلب " + courtWord(c), discordId: c.targetUid, actorId: req.user.id, actorTag: name + " (قيادة الشؤون العسكرية)", details: c.targetName });
     if (c.startedBy) pushUid(c.startedBy, { title: CONFIG.SITE_NAME, body: "❌ رفضت القيادة طلب التحقيق مع " + c.targetName, tag: "court-req", ttl: 86400 }).catch(() => {});
     courtPush(courtTargetUids(c));
     res.json({ ok: true });
@@ -10219,7 +9843,7 @@ async function kickCtx(req, res) {
         const c = await CourtCase.findOne({ voiceN: n, status: "active" });
         if (!c) { res.status(404).json({ error: "المحكمة غير موجودة أو انتهت" }); return null; }
         const r = await courtRole(uid);
-        if (courtIsTarget(c, uid) || !(r.leader || c.startedBy === uid)) { res.status(403).json({ error: "فك الطرد لقيادة الشرطة العسكرية أو اللي فتح التحقيق أو الكبار" }); return null; }
+        if (courtIsTarget(c, uid) || !(r.leader || c.startedBy === uid)) { res.status(403).json({ error: "فك الطرد لقيادة الشؤون العسكرية أو اللي فتح التحقيق أو الكبار" }); return null; }
         return { type: "court", c, n };
     }
     if (n && offIsCyber(n)) {
@@ -11111,9 +10735,6 @@ let lastKnownRank = null;
 let META = { types: [], vehicles: [] };
 let selectedVehicle = null;
 let photoBase64 = null;
-let reportMeta = { vehicles: [] };
-let reportSelectedVehicle = null;
-let reportVehiclePhoto = null;
 let currentAdminTab = null;
 let pollTimer = null;
 let blockedPollTimer = null;
@@ -11600,7 +11221,7 @@ async function submitSummonForm(mode) {
     }
     try {
         const r = await api(summonFormCtx.apiPath + summonFormCtx.discord + '/summon', { method: 'POST', body: JSON.stringify(body) });
-        toast(r.pending ? '✅ تم إرسال طلب الاستدعاء لقيادة الشرطة العسكرية' : '✅ تم إرسال الاستدعاء');
+        toast(r.pending ? '✅ تم إرسال طلب الاستدعاء لقيادة الشؤون العسكرية' : '✅ تم إرسال الاستدعاء');
         closeWarnForm();
         if (summonFormCtx.reloadCall) { try { Function(summonFormCtx.reloadCall)(); } catch (e) {} }
     } catch (e) { toast(e.message); }
@@ -12466,7 +12087,7 @@ async function refreshMe() {
 var SP = { cur: null, es: null, esOk: false, img: null, lastLive: 0, liveT: null, badgeT: null, loading: false, again: false, atab: 'waiting' };
 var SP_CATS = ['مشكلة في الموقع', 'مشكلة في حسابي', 'مخالفة / نقاط / رتبة', 'إجازة', 'البطاقة العسكرية', 'اقتراح', 'أخرى'];
 var SP_PLACE_MAP = {
-    'مشكلة في الموقع': ['تسجيل الدخول / التسجيل', 'الرئيسية', 'تسجيل مخالفة', 'مخالفاتي', 'الإجازات', 'بطاقتي', 'لوحة الإدارة', 'لوحة القطاع', 'الشرطة العسكرية', 'أخرى'],
+    'مشكلة في الموقع': ['تسجيل الدخول / التسجيل', 'الرئيسية', 'تسجيل مخالفة', 'مخالفاتي', 'الإجازات', 'بطاقتي', 'لوحة الإدارة', 'لوحة القطاع', 'الشؤون العسكرية', 'أخرى'],
     'مشكلة في حسابي': ['تسجيل الدخول', 'كلمة المرور', 'طلب التسجيل / الموافقة على الحساب', 'الاسم أو البريد', 'القطاع أو الرتبة', 'أخرى'],
     'مخالفة / نقاط / رتبة': ['مخالفة مسجّلة عليّ', 'النقاط', 'الرتبة', 'الترقية / التنزيل', 'التحذيرات', 'صورة المخالفة', 'أخرى'],
     'إجازة': ['طلب إجازة جديد', 'حالة الطلب', 'مدة الإجازة', 'إلغاء أو تمديد الإجازة', 'أخرى'],
@@ -12539,8 +12160,6 @@ function spConnect() {
             try {
                 if (ME && document.getElementById('att-body') && typeof ATTP !== 'undefined' && ATTP.tab === 'viol') attLoad(true);
                 if (ME && document.getElementById('hc-content') && typeof hcTab !== 'undefined' && hcTab === 'att') loadHCAtt(true);
-                if (ME && document.getElementById('hc-content') && typeof hcTab !== 'undefined' && hcTab === 'exc') loadHCExcuses(true);
-                if (ME && document.getElementById('admin-content') && typeof currentAdminTab !== 'undefined' && currentAdminTab === 'excuses') loadSeniorExcuses(true);
                 if (!ME || !ME.isHighCommand) return;
                 checkPromotionAlert();
                 if (typeof hcTab !== 'undefined' && hcTab === 'pending' && document.getElementById('hc-content')) loadHCPending(true);
@@ -13414,7 +13033,7 @@ async function spDeleteTicket() {
     try { await spApi('/api/support/admin/tickets/' + c.id, { method: 'DELETE' }); toast('🗑️ تم حذف التكت'); spBack(); }
     catch (e) { toast(e.message); }
 }
-var SP_INS_CATS = [['account', '🔐 معلومات الحساب'], ['attendance', '🕒 عدد الانصراف'], ['file', '🪖 معلومات الملف العسكري'], ['receipt', '📣 آخر استلام'], ['log', '📜 آخر لوق للعضو']];
+var SP_INS_CATS = [['account', '🔐 معلومات الحساب'], ['attendance', '🕒 عدد الانصراف'], ['file', '🪖 معلومات الملف العسكري'], ['log', '📜 آخر لوق للعضو']];
 function spFmtDate(v) {
     try { return new Date(v).toLocaleString('ar-SA-u-ca-gregory', { timeZone: 'Asia/Riyadh', year: 'numeric', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch (e) { return '—'; }
 }
@@ -13684,11 +13303,6 @@ function flGoTo(code) {
     if (!ME) return false;
     try {
         if (code === 'att') { if (ME.att && ME.att.status === 'in') renderDashboard(); else renderFingerprint('checkin'); return true; }
-        if (code === 'excuse') { renderExcusePage(); return true; }
-        if (code === 'hcexcuse') {
-            if (ME.isHighCommand) { renderHighCommandPanel(); hcTabSwitch('exc', document.querySelectorAll('.tabs .tab')[3]); return true; }
-            if (ME.isSeniorAdmin) { renderAdmin('excuses'); return true; }
-        }
         if (code === 'hcatt' && ME.isHighCommand) { renderHighCommandPanel(); hcTabSwitch('att', document.querySelectorAll('.tabs .tab')[2]); return true; }
         if (code === 'court' && ME.courtStaff) { renderCourtPanel(); return true; }
     } catch (e) {}
@@ -13777,8 +13391,8 @@ function updateStealthBtn(on) {
 var CC_TIMER = null;
 
 /* ⚡ أوامر فلاش (المالك): فتح لوحات القيادة كقائد/نائب بصمت تام — ما ينسجل شي وما يظهر اسمك */
-var FL_SEC_KEYS = ['lsbd', 'ssf', 'militaryPolice', 'militaryAffairs'];
-var FL_SEC_LABELS = { lsbd: 'LSBD', ssf: 'SSF', militaryPolice: 'الشرطة العسكرية', militaryAffairs: 'الشؤون العسكرية' };
+var FL_SEC_KEYS = ['lsbd', 'ssf', 'militaryAffairs'];
+var FL_SEC_LABELS = { lsbd: 'LSBD', ssf: 'SSF', militaryAffairs: 'الشؤون العسكرية' };
 function flCmdBack(fn, label) { return '<div style="margin-bottom:8px;"><button class="btn sm gray" onclick="' + fn + '">' + label + '</button></div>'; }
 function flCmdOpen() {
     ccStopLive();
@@ -13788,7 +13402,7 @@ function flCmdOpen() {
         '<div style="display:grid;gap:8px;">' +
         '<button class="btn" style="background:#0e7490;" data-r="commander" onclick="flCmdSectors(this.dataset.r)">🎖️ لوحة قيادة القطاعات</button>' +
         '<button class="btn" style="background:#6d28d9;" data-r="deputy" onclick="flCmdSectors(this.dataset.r)">🎖️ لوحة نواب القطاعات</button>' +
-        '<button class="btn" style="background:#92400e;" onclick="flCmdMP()">🚔 الشرطة العسكرية (القادة والنواب)</button>' +
+        '<button class="btn" style="background:#92400e;" onclick="flCmdMP()">🚔 الشؤون العسكرية (القادة والنواب)</button>' +
         '</div>');
 }
 function flCmdSectors(role) {
@@ -13800,11 +13414,11 @@ function flCmdSectors(role) {
         }).join('') + '</div>');
 }
 function flCmdMP() {
-    ownerModalOpen('🚔 الشرطة العسكرية',
+    ownerModalOpen('🚔 الشؤون العسكرية',
         flCmdBack('flCmdOpen()', '↩ رجوع') +
         '<div style="display:grid;gap:8px;">' +
-        '<button class="btn" style="background:#92400e;" data-r="commander" onclick="flCmdLaunchMP(this.dataset.r)">🚔 لوحة قائد الشرطة العسكرية</button>' +
-        '<button class="btn" style="background:#b45309;" data-r="deputy" onclick="flCmdLaunchMP(this.dataset.r)">🚔 لوحة نائب الشرطة العسكرية</button>' +
+        '<button class="btn" style="background:#92400e;" data-r="commander" onclick="flCmdLaunchMP(this.dataset.r)">🚔 لوحة قائد الشؤون العسكرية</button>' +
+        '<button class="btn" style="background:#b45309;" data-r="deputy" onclick="flCmdLaunchMP(this.dataset.r)">🚔 لوحة نائب الشؤون العسكرية</button>' +
         '</div>');
 }
 function flCmdLaunchSector(sector, role) {
@@ -14269,12 +13883,11 @@ function buildNav() {
         { label: '🏠 الرئيسية', fn: 'renderDashboard()' },
     ];
     if (ME.isMilitaryPolice && !ME.isSeniorAdmin) {
-        items.push({ label: '📝 تسجيل تقرير (شرطة عسكرية)', fn: "openMPReportForm('renderDashboard()')" });
-    } else if (ME.isAntiDrugs && !ME.isSeniorAdmin) {
-        items.push({ label: '📝 تسجيل تقرير', fn: 'renderNewReport()' });
-    } else {
-        items.push({ label: '📝 تسجيل مخالفة', fn: 'renderNewViolation()' });
+        items.push({ label: '📝 تسجيل تقرير (شؤون عسكرية)', fn: "openMPReportForm('renderDashboard()')" });
     }
+    if (ME.canViolation) items.push({ label: '📝 تسجيل مخالفة', fn: 'renderNewViolation()' });
+    if (ME.canMilViolation) items.push({ label: '🪖 تسجيل مخالفة عسكرية', fn: 'renderMilViolation()' });
+    if (ME.milViolReviewer) items.push({ label: '⚖️ مراجعة المخالفات العسكرية', fn: 'renderMilViolPanel()' });
     items.push(
         { label: '📋 مخالفاتي', fn: 'renderMinePage()' },
         { label: '🌴 الإجازات', fn: 'renderLeavePage()' },
@@ -14286,13 +13899,13 @@ function buildNav() {
     if (ME.isViolationsOfficer) items.push({ label: '⚖️ مسؤول المخالفات', fn: 'renderViolationsOfficerPanel()' });
     if (ME.sectorViolOfficer) items.push({ label: '⚖️ مخالفات القطاع', fn: 'renderSectorViolOfficerPanel()' });
     if (ME.canAttView) items.push({ label: '🖐️ التحضير', fn: 'renderAttViewPanel()' });
-    if (ME.mpInfo) items.push({ label: '🚔 لوحة الشرطة العسكرية', fn: 'renderMPPanel()' });
-    else if (ME.mpPersonnelOfficer) { items.push({ label: '🚔 الشرطة العسكرية', fn: 'renderMPMemberPanel()' }); items.push({ label: '👮 مسؤول أفراد الشرطة العسكرية', fn: 'renderMPPOPanel()' }); }
-    else if (ME.isMilitaryPolice) items.push({ label: '🚔 الشرطة العسكرية', fn: 'renderMPMemberPanel()' });
+    if (ME.mpInfo) items.push({ label: '🚔 لوحة الشؤون العسكرية', fn: 'renderMPPanel()' });
+    else if (ME.mpPersonnelOfficer) { items.push({ label: '🚔 الشؤون العسكرية', fn: 'renderMPMemberPanel()' }); items.push({ label: '👮 مسؤول أفراد الشؤون العسكرية', fn: 'renderMPPOPanel()' }); }
+    else if (ME.isMilitaryPolice) items.push({ label: '🚔 الشؤون العسكرية', fn: 'renderMPMemberPanel()' });
     if (ME.courtStaff) items.push({ label: '⚖️ المحكمة العسكرية', fn: 'renderCourtPanel()' });
     if (ME.courtStaff) items.push({ label: '🔎 التحقيق العسكري', fn: 'renderInvPanel()' });
     if (ME.sectorInfo && ME.sectorInfo.sector !== 'cyber') items.push({ label: '🎖️ لوحة قيادة القطاع', fn: 'renderSectorPanel()' });
-    if (ME.personnelOfficerInfo) items.push({ label: '👥 مسؤول الأفراد', fn: 'renderPersonnelOfficerPanel()' });
+    if (ME.personnelOfficerInfo) items.push({ label: ME.personnelOfficerInfo.kind === 'oo' ? '👥 مسؤول الضباط' : '👥 مسؤول الأفراد', fn: 'renderPersonnelOfficerPanel()' });
     items.push({ label: '🎧 الدعم', fn: 'spOpen()', cls: 'sp-nav-user' });
     if (ME.isAdmin) items.push({ label: '🎧 تذاكر الدعم', fn: 'renderSupportAdmin()', cls: 'sp-nav-admin' });
     items.push({ label: '🚪 خروج', fn: "location.href='/auth/logout'" });
@@ -14309,11 +13922,11 @@ function renderFabs() {
     if (ME.isViolationsOfficer) fabs.push({ label: '⚖️ مسؤول المخالفات', fn: 'renderViolationsOfficerPanel()' });
     if (ME.sectorViolOfficer) fabs.push({ label: '⚖️ مخالفات القطاع', fn: 'renderSectorViolOfficerPanel()' });
     if (ME.canAttView) fabs.push({ label: '🖐️ التحضير', fn: 'renderAttViewPanel()' });
-    if (ME.mpInfo) fabs.push({ label: '🚔 الشرطة العسكرية', fn: 'renderMPPanel()' });
-    else if (ME.mpPersonnelOfficer) { fabs.push({ label: '🚔 الشرطة العسكرية', fn: 'renderMPMemberPanel()' }); fabs.push({ label: '👮 أفراد الشرطة العسكرية', fn: 'renderMPPOPanel()' }); }
-    else if (ME.isMilitaryPolice) fabs.push({ label: '🚔 الشرطة العسكرية', fn: 'renderMPMemberPanel()' });
+    if (ME.mpInfo) fabs.push({ label: '🚔 الشؤون العسكرية', fn: 'renderMPPanel()' });
+    else if (ME.mpPersonnelOfficer) { fabs.push({ label: '🚔 الشؤون العسكرية', fn: 'renderMPMemberPanel()' }); fabs.push({ label: '👮 أفراد الشؤون العسكرية', fn: 'renderMPPOPanel()' }); }
+    else if (ME.isMilitaryPolice) fabs.push({ label: '🚔 الشؤون العسكرية', fn: 'renderMPMemberPanel()' });
     if (ME.sectorInfo && ME.sectorInfo.sector !== 'cyber') fabs.push({ label: '🎖️ لوحة القيادة', fn: 'renderSectorPanel()' });
-    if (ME.personnelOfficerInfo) fabs.push({ label: '👥 لوحة الأفراد', fn: 'renderPersonnelOfficerPanel()' });
+    if (ME.personnelOfficerInfo) fabs.push({ label: ME.personnelOfficerInfo.kind === 'oo' ? '👥 لوحة الضباط' : '👥 لوحة الأفراد', fn: 'renderPersonnelOfficerPanel()' });
     return fabs.map((f, i) => \`<button class="fab" style="bottom:\${25 + i * 65}px;" onclick="\${f.fn}">\${f.label}</button>\`).join('');
 }
 function toggleMobileMenu() {
@@ -14477,7 +14090,6 @@ async function pollTick() {
         }
         lastKnownRank = fresh.rank;
         ME = fresh; odFix();
-        try { flRcRefresh(); } catch (x) {}
         if (fresh.deviceLocked && !fresh.cyberLocked) { dvHardLock(); return; }
         if (fresh.unassigned && !fresh.cyberLocked) { uaHardLock(); return; }
         buildNav();
@@ -14594,12 +14206,12 @@ function accPosition() {
     if (m.isHighCommand) return 'القيادة العليا';
     if (m.sectorInfo && m.sectorInfo.role === 'commander') return 'قائد ' + (m.sectorInfo.sectorLabel || 'القطاع');
     if (m.sectorInfo && m.sectorInfo.role === 'deputy') return 'نائب قائد ' + (m.sectorInfo.sectorLabel || 'القطاع');
-    if (m.personnelOfficerInfo) return 'مسؤول أفراد ' + (m.personnelOfficerInfo.sectorLabel || '');
-    if (m.mpInfo) return (m.mpInfo.role === 'commander' ? 'قائد' : 'نائب قائد') + ' الشرطة العسكرية';
-    if (m.mpPersonnelOfficer) return 'مسؤول أفراد الشرطة العسكرية';
+    if (m.personnelOfficerInfo) return (m.personnelOfficerInfo.kind === 'oo' ? 'مسؤول ضباط ' : 'مسؤول أفراد ') + (m.personnelOfficerInfo.sectorLabel || '');
+    if (m.mpInfo) return (m.mpInfo.role === 'commander' ? 'قائد' : 'نائب قائد') + ' الشؤون العسكرية';
+    if (m.mpPersonnelOfficer) return 'مسؤول أفراد الشؤون العسكرية';
     if (m.isViolationsOfficer) return 'مسؤول المخالفات';
     if (m.isTrainer) return 'مدرب سلك الضباط';
-    if (m.isMilitaryPolice) return 'شرطة عسكرية';
+    if (m.isMilitaryPolice) return 'شؤون عسكرية';
     return m.unit ? 'عضو ' + m.unit : 'عسكري';
 }
 function savedInfoFromMe() { return { name: (ME && (ME.registeredName || ME.discordTag)) || '', rank: (ME && ME.rank) || '', position: accPosition() }; }
@@ -14816,9 +14428,8 @@ function renderDashboard() {
                 <div class="row" style="gap:8px;">
                     <button class="btn sm" onclick="renderCard()">بطاقتي</button>
                     \${/* ملاحظة: هنا التردد — تم حذف الزر فقط والكود باقي. لإرجاع الزر استبدل '' بـ flFreqBtnHtml() */ ''}
-                    \${!ME.violationsDisabled ? (ME.isAntiDrugs && !ME.isSeniorAdmin
-                        ? '<button class="btn sm" onclick="renderNewReport()">+ تسجيل تقرير جديد</button>'
-                        : '<button class="btn sm" onclick="renderNewViolation()">+ تسجيل مخالفة جديدة</button>') : ''}
+                    \${(!ME.violationsDisabled && ME.canViolation) ? '<button class="btn sm" onclick="renderNewViolation()">+ تسجيل مخالفة جديدة</button>' : ''}
+                    \${ME.canMilViolation ? '<button class="btn sm" onclick="renderMilViolation()">🪖 تسجيل مخالفة عسكرية</button>' : ''}
                     \${flAfterBtnsHtml()}
                 </div>
             </div>
@@ -14943,170 +14554,6 @@ async function submitViolation() {
         violationSubmitting = false;
     }
 }
-function renderNewReport() {
-    if (!attOk()) return;
-    document.getElementById('app').innerHTML = \`
-        <div class="card">
-            <h2>تسجيل تقرير جديد</h2>
-            <p style="color:var(--muted);margin-bottom:14px;">اختر نوع التقرير:</p>
-            <div class="row" style="gap:8px;">
-                <button class="btn" onclick="renderReportForm('جنائي')">⚖️ جنائي</button>
-                <button class="btn" onclick="renderReportForm('مخدرات')">💊 مخدرات</button>
-            </div>
-            <div style="margin-top:14px;">
-                <button class="btn gray" onclick="renderDashboard()">رجوع</button>
-            </div>
-        </div>\`;
-}
-let reportItemCount = 0;
-async function renderReportForm(category) {
-    const meta = await api('/api/violations/meta');
-    reportMeta = meta; reportSelectedVehicle = null; reportVehiclePhoto = null;
-    reportItemCount = 0;
-    const isDrugs = category === 'مخدرات';
-    document.getElementById('app').innerHTML = \`
-        <div class="card">
-            <h2>تسجيل تقرير \${isDrugs ? 'مكافحة مخدرات' : 'جنائي'}</h2>
-            <label>اسم المتهم</label>
-            <input id="rp-suspect-name" placeholder="اسم المتهم">
-            <label>موقع الضبط</label>
-            <input id="rp-location" placeholder="موقع الضبط">
-            <label>المركبة</label>
-            \${meta.vehicles.length ? \`<div class="vgrid" id="rp-v-grid">\${meta.vehicles.map((v,i) => \`
-                <div class="vcard" id="rp-vcard-\${i}" onclick="pickReportVehicle(\${i})">
-                    \${v.photo ? \`<img src="\${v.photo}">\` : ''}
-                    <div>\${v.name}</div>
-                </div>\`).join('')}</div>\` : '<p style="color:var(--muted);margin-bottom:10px;">لا توجد مركبات مضافة</p>'}
-            <h3 style="margin-top:16px;">تفاصيل العملية الميدانية</h3>
-            <label>سبب الاستيقاف</label>
-            <input id="rp-stop-reason" placeholder="سبب الاستيقاف">
-            <div class="row" style="margin-top:16px;"><h3>\${isDrugs ? 'المخالفات' : 'المضبوطات'} على هذا المتهم (بحد أقصى 5)</h3><button type="button" class="btn sm gray" onclick="addReportItem('\${category}')">\${isDrugs ? '+ إضافة مخالفة' : '+ إضافة مضبوط'}</button></div>
-            <div id="rp-items-box"></div>
-            <label style="margin-top:12px;">الإجراءات الأمنية المتخذة</label>
-            <div id="rp-actions-box">
-                <div class="row rp-action-row" style="gap:6px;flex-wrap:nowrap;">
-                    <input class="rp-action" placeholder="- إجراء أمني" style="flex:1;">
-                    <button type="button" class="btn danger sm" style="flex:0 0 auto;" onclick="removeSecurityAction(this)">حذف</button>
-                </div>
-            </div>
-            <button class="btn gray sm" style="margin:8px 0;" onclick="addSecurityAction()">+ إضافة إجراء</button>
-            <label>صورة المركبة (إجباري)</label>
-            <input type="file" id="rp-photo" accept="image/*" onchange="previewReportPhoto()" required>
-            <img id="rp-photo-preview" style="display:none;max-width:220px;border-radius:8px;margin-bottom:10px;">
-            <div class="row" style="gap:8px;margin-top:10px;">
-                <button class="btn" onclick="submitReport('\${category}')">إرسال التقرير</button>
-                <button class="btn gray" onclick="renderNewReport()">رجوع</button>
-            </div>
-        </div>\`;
-    if (meta.vehicles.length) pickReportVehicle(0);
-    addReportItem(category);
-}
-function addReportItem(category) {
-    const box = document.getElementById('rp-items-box');
-    const isDrugs = category === 'مخدرات';
-    box.dataset.category = category;
-    if (box.querySelectorAll('.rp-item-block').length >= 5) return toast(isDrugs ? 'الحد الأقصى 5 مخالفات بنفس التقرير' : 'الحد الأقصى 5 مضبوطات بنفس التقرير');
-    reportItemCount++;
-    const i = reportItemCount;
-    const div = document.createElement('div');
-    div.className = 'card rp-item-block';
-    div.id = 'rp-item-' + i;
-    div.style.cssText = 'margin-top:8px;padding:12px;';
-    div.innerHTML = \`
-        <div class="row"><b>\${isDrugs ? 'مخالفة' : 'مضبوط'} #<span class="rp-item-num">\${box.children.length + 1}</span></b><button type="button" class="btn danger sm" onclick="removeReportItem(\${i})">حذف</button></div>
-        \${isDrugs ? \`
-        <label>نوع المخدر المضبوط</label>
-        <input class="rp-item-drug-type" placeholder="مثال: حشيش، شبو، حبوب مخدرة">
-        <label>الكمية المضبوطة</label>
-        <input class="rp-item-drug-qty" placeholder="مثال: 3 كيلو / 50 حبة">
-        <label>طريقة إخفاء المخدر</label>
-        <input class="rp-item-conceal" placeholder="مثال: مخبأ داخل صندوق السيارة">
-        \` : \`
-        <label>مضبوط</label>
-        <textarea class="rp-item-seized" placeholder="مضبوط" rows="2"></textarea>
-        \`}\`;
-    box.appendChild(div);
-    renumberReportItems();
-}
-function removeReportItem(i) {
-    const box = document.getElementById('rp-items-box');
-    const isDrugs = box.dataset.category === 'مخدرات';
-    if (box.querySelectorAll('.rp-item-block').length <= 1) return toast(isDrugs ? 'لازم تبقى مخالفة واحدة على الأقل' : 'لازم يبقى مضبوط واحد على الأقل');
-    document.getElementById('rp-item-' + i).remove();
-    renumberReportItems();
-}
-function renumberReportItems() {
-    document.querySelectorAll('#rp-items-box .rp-item-block').forEach((el, idx) => {
-        el.querySelector('.rp-item-num').textContent = idx + 1;
-    });
-}
-function pickReportVehicle(i) {
-    reportSelectedVehicle = reportMeta.vehicles[i].name;
-    document.querySelectorAll('#rp-v-grid .vcard').forEach(el => el.classList.remove('sel'));
-    document.getElementById('rp-vcard-' + i).classList.add('sel');
-}
-function addSecurityAction() {
-    const box = document.getElementById('rp-actions-box');
-    const row = document.createElement('div');
-    row.className = 'row rp-action-row';
-    row.style.cssText = 'gap:6px;flex-wrap:nowrap;margin-top:6px;';
-    row.innerHTML = '<input class="rp-action" placeholder="- إجراء أمني" style="flex:1;"><button type="button" class="btn danger sm" style="flex:0 0 auto;" onclick="removeSecurityAction(this)">حذف</button>';
-    box.appendChild(row);
-}
-function removeSecurityAction(btn) {
-    const box = document.getElementById('rp-actions-box');
-    if (box.querySelectorAll('.rp-action-row').length <= 1) {
-        btn.closest('.rp-action-row').querySelector('.rp-action').value = '';
-        return;
-    }
-    btn.closest('.rp-action-row').remove();
-}
-function previewReportPhoto() {
-    const f = document.getElementById('rp-photo').files[0];
-    if (!f) return;
-    toast('جارِ تجهيز الصورة...');
-    exCompress(f, 1600, 0.82).then(function (d) {
-        reportVehiclePhoto = d;
-        const img = document.getElementById('rp-photo-preview');
-        img.src = reportVehiclePhoto; img.style.display = 'block';
-    }).catch(function (e) { toast(e.message || 'تعذر قراءة الصورة'); });
-}
-async function submitReport(category) {
-    const isDrugs = category === 'مخدرات';
-    const suspectName = document.getElementById('rp-suspect-name').value.trim();
-    const arrestLocation = document.getElementById('rp-location').value.trim();
-    const stopReason = document.getElementById('rp-stop-reason').value.trim();
-    const securityActions = Array.from(document.querySelectorAll('.rp-action')).map(el => el.value.trim()).filter(Boolean);
-    if (!suspectName || !arrestLocation) return toast('أكمل اسم المتهم وموقع الضبط');
-    if (!reportSelectedVehicle) return toast('اختر المركبة');
-    if (!stopReason) return toast('أكمل تفاصيل العملية الميدانية');
-    if (!reportVehiclePhoto) return toast('لازم ترفق صورة المركبة');
-
-    const blocks = Array.from(document.querySelectorAll('#rp-items-box .rp-item-block'));
-    if (!blocks.length) return toast(isDrugs ? 'أضف مخالفة واحدة على الأقل' : 'أضف مضبوط واحد على الأقل');
-    const items = [];
-    for (const b of blocks) {
-        if (isDrugs) {
-            const drugType = b.querySelector('.rp-item-drug-type').value.trim();
-            const drugQuantity = b.querySelector('.rp-item-drug-qty').value.trim();
-            const concealMethod = b.querySelector('.rp-item-conceal').value.trim();
-            if (!drugType || !drugQuantity || !concealMethod) return toast('أكمل كل حقول كل مخالفة (نوع المخدر، الكمية، طريقة الإخفاء)');
-            items.push({ drugType, drugQuantity, concealMethod });
-        } else {
-            const seizedItems = b.querySelector('.rp-item-seized').value.trim();
-            if (!seizedItems) return toast('اكتب المضبوطات لكل مضبوط');
-            items.push({ seizedItems });
-        }
-    }
-    try {
-        const r = await api('/api/reports/submit', { method: 'POST', body: JSON.stringify({
-            category, suspectName, arrestLocation, vehicle: reportSelectedVehicle,
-            stopReason, securityActions, photo: reportVehiclePhoto, items,
-        }) });
-        toast(\`✅ تم إرسال \${r.count} مخالفة على \${suspectName}، بانتظار المراجعة\`);
-        renderDashboard();
-    } catch (e) { toast(e.message); }
-}
 function renderCard() {
     document.getElementById('app').innerHTML = '<div style="margin-top:30px;">' +
         cardBlock(ME, { id: 'me-card', hasProgress: true, nextRank: ME.nextRank, remaining: ME.pointsRemaining }) +
@@ -15136,7 +14583,6 @@ function renderAdmin(startTab) {
             <div class="tab" id="tab-support" onclick="adminTab('support', this)">🎧 خدمة العملاء</div>
             \${/* ملاحظة: هنا التردد — تم حذف التاب فقط والكود باقي. لإرجاعه حط مكان '' هذا: '<div class="tab" onclick="adminTab(\'freq\', this)">📻 الترددات</div>' */ ''}
             <div class="tab" onclick="adminTab('settings', this)">الإعدادات</div>
-            <div class="tab" onclick="renderNewReport()">🧪 تسجيل تقرير جديد مكافحة</div>
         </div>\` : (ME.isAdmin ? \`<div class="tabs"><div class="tab active" onclick="adminTab('regs', this)">📥 طلبات التسجيل</div><div class="tab" id="tab-support" onclick="adminTab('support', this)">🎧 خدمة العملاء</div></div>\` : '');
     document.getElementById('app').innerHTML = \`
         <div class="card row"><h2>\${ME.isSeniorAdmin ? 'لوحة تحكم كبار المسؤولين' : 'لوحة الإدارة'}</h2><button class="btn gray sm" onclick="renderDashboard()">رجوع للوحتي</button></div>
@@ -15160,7 +14606,6 @@ function adminTab(name, el) {
     if (name === 'hire') loadHire();
     if (name === 'thresholds') loadThresholds();
     if (name === 'leave') loadSeniorLeavePage();
-    if (name === 'excuses') loadSeniorExcuses();
     if (name === 'att') attOpen();
     if (name === 'sfile') sfOpen();
     if (name === 'log') loadLog();
@@ -15371,7 +14816,6 @@ function attPaintHours(d) {
 function attPaintAbsent(d) {
     var body = document.getElementById('att-body');
     if (!body) return;
-    if (d.reception) { attPaintReception(d); return; }
     var P = [[1, 'اليوم'], [3, 'آخر ٣ أيام'], [7, 'آخر ٧ أيام'], [14, 'آخر ١٤ يوم']];
     var chips = P.map(function (p) { return attChip(p[1], ATTP.days === p[0], 'attSetDays', p[0]); }).join('');
     var pct = d.total ? Math.round(d.absentCount / d.total * 100) : 0;
@@ -15776,36 +15220,44 @@ function renderSectorsBox() {
                     \${sec.personnelOfficerName ? \`<button class="btn danger sm" onclick="removeSectorRole('\${key}','personnelOfficer')">إزالة</button>\` : ''}
                 </div>
             </div>
+            <div class="row" style="margin-top:8px;">
+                <span>مسؤول الضباط: <b style="color:\${sec.officersOfficerName ? '#4ade80' : 'var(--muted)'};">\${sec.officersOfficerName || 'غير معيّن'}</b></span>
+                <div class="row" style="gap:6px;">
+                    <button class="btn sm gray" onclick="openSectorPicker('\${key}','officersOfficer')">مسؤول ضباط \${label}</button>
+                    \${sec.officersOfficerName ? \`<button class="btn danger sm" onclick="removeSectorRole('\${key}','officersOfficer')">إزالة</button>\` : ''}
+                </div>
+            </div>
             <div style="color:var(--muted);font-size:12px;margin-top:2px;">مسؤول الأفراد يتحكم بالأعضاء من رتبة رئيس رقباء وتحت فقط (ملاحظات، تحذيرات، ومخالفاتهم) — وطلبات الترقية/التنزيل اللي يسويها تروح لك أو للنائب بصفحة "ترقيات الأفراد" داخل لوحة قيادة القطاع للموافقة عليها.</div>
             <div id="picker-\${key}-commander"></div>
             <div id="picker-\${key}-deputy"></div>
             <div id="picker-\${key}-personnelOfficer"></div>
+            <div id="picker-\${key}-officersOfficer"></div>
         </div>\`;
     }).join('') + \`
         <div class="card">
-            <h3>🚔 الشرطة العسكرية</h3>
+            <h3>🚔 الشؤون العسكرية</h3>
             <div class="row" style="margin-top:8px;">
                 <span>القائد: <b style="color:\${mp.commanderName ? '#4ade80' : 'var(--muted)'};">\${mp.commanderName || 'غير معيّن'}</b></span>
                 <div class="row" style="gap:6px;">
-                    <button class="btn sm" onclick="openMPPicker('commander')">قائد الشرطة العسكرية</button>
+                    <button class="btn sm" onclick="openMPPicker('commander')">قائد الشؤون العسكرية</button>
                     \${mp.commanderName ? '<button class="btn danger sm" onclick="removeMPRole(\\'commander\\')">إزالة</button>' : ''}
                 </div>
             </div>
             <div class="row" style="margin-top:8px;">
                 <span>النائب: <b style="color:\${mp.deputyName ? '#4ade80' : 'var(--muted)'};">\${mp.deputyName || 'غير معيّن'}</b></span>
                 <div class="row" style="gap:6px;">
-                    <button class="btn sm gray" onclick="openMPPicker('deputy')">نائب الشرطة العسكرية</button>
+                    <button class="btn sm gray" onclick="openMPPicker('deputy')">نائب الشؤون العسكرية</button>
                     \${mp.deputyName ? '<button class="btn danger sm" onclick="removeMPRole(\\'deputy\\')">إزالة</button>' : ''}
                 </div>
             </div>
             <div class="row" style="margin-top:8px;">
                 <span>مسؤول الأفراد: <b style="color:\${mp.personnelOfficerName ? '#4ade80' : 'var(--muted)'};">\${mp.personnelOfficerName || 'غير معيّن'}</b></span>
                 <div class="row" style="gap:6px;">
-                    <button class="btn sm gray" onclick="openMPPicker('personnelOfficer')">مسؤول أفراد الشرطة العسكرية</button>
+                    <button class="btn sm gray" onclick="openMPPicker('personnelOfficer')">مسؤول أفراد الشؤون العسكرية</button>
                     \${mp.personnelOfficerName ? '<button class="btn danger sm" onclick="removeMPRole(\\'personnelOfficer\\')">إزالة</button>' : ''}
                 </div>
             </div>
-            <div style="color:var(--muted);font-size:12px;margin-top:2px;">مسؤول أفراد الشرطة العسكرية يعيّنه كبار المسؤولين من هنا، أو القائد/النائب من لوحة الشرطة العسكرية. ياخذ نفس صلاحيات العضو + يتحكم بأفراد الشرطة العسكرية (ما عدا القائد والنائب).</div>
+            <div style="color:var(--muted);font-size:12px;margin-top:2px;">مسؤول أفراد الشؤون العسكرية يعيّنه كبار المسؤولين من هنا، أو القائد/النائب من لوحة الشؤون العسكرية. ياخذ نفس صلاحيات العضو + يتحكم بأفراد الشؤون العسكرية (ما عدا القائد والنائب).</div>
             <div id="picker-mp-commander"></div>
             <div id="picker-mp-deputy"></div>
             <div id="picker-mp-personnelOfficer"></div>
@@ -15818,7 +15270,6 @@ function renderSectorsBox() {
             <div id="hc-members-list" style="margin-top:10px;">جارِ التحميل...</div>
         </div>\`;
     loadHighCommandList();
-    flReceptionMount();
     flHideCyberPO();
 }
 async function loadHighCommandList() {
@@ -15985,7 +15436,6 @@ function hcTabSwitch(name, el) {
     if (name === 'pending') loadHCPending();
     if (name === 'history') loadHCHistory();
     if (name === 'att') loadHCAtt();
-    if (name === 'exc') loadHCExcuses();
 }
 function hcCard(r, withActions) {
     const kind = r.kind || 'rank';
@@ -16042,317 +15492,6 @@ function exCompress(file, maxDim, qual) {
         fr.readAsDataURL(file);
     });
 }
-function exBadge(st) {
-    if (st === 'pending') return '<span class="badge pending">⏳ بانتظار القيادة العليا</span>';
-    if (st === 'accepted') return '<span class="badge approved">✅ مقبول</span>';
-    if (st === 'rejected') return '<span class="badge rejected">❌ مرفوض</span>';
-    return '';
-}
-function exTypeLabel(t) { return t === 'medical' ? '🩺 طبي' : '📄 بدون طبي'; }
-async function renderExcusePage() {
-    document.getElementById('app').innerHTML = '<div class="card row"><h2>🩺 غياب بعذر</h2><button class="btn gray sm" onclick="renderDashboard()">رجوع</button></div>' +
-        '<div id="ex-body"><div class="card">جارِ التحميل...</div></div>';
-    exLoad();
-}
-async function exLoad() {
-    var box = document.getElementById('ex-body');
-    if (!box) return;
-    var d;
-    try { d = await api('/api/excuse/my'); }
-    catch (e) { box.innerHTML = '<div class="card" style="color:#f87171;">' + cyEsc(e.message) + '</div>'; return; }
-    if (!d.list.length) { box.innerHTML = '<div class="card center" style="color:var(--muted);">ما عليك أي غياب عن الاستلام في آخر ١٤ يوم 👌</div>'; return; }
-    box.innerHTML = '<div class="card" style="font-size:12px;color:var(--muted);">اختر الغياب وقدّم عذرك. إذا انقبل العذر ترجع لك النقاط، وإذا انرفض يتثبت الخصم.</div>' + d.list.map(function (x) {
-        var ex = x.excuse;
-        var right = '';
-        if (x.excuseStatus === 'none') right = '<button class="btn sm" data-id="' + x.rowId + '" onclick="exOpen(this.dataset.id)">تقديم عذر</button>';
-        else if (x.excuseStatus === 'removed') right = '<span class="badge approved">🧹 أُزيل الغياب</span>';
-        else if (ex) right = exBadge(ex.status);
-        var info = '';
-        if (ex) {
-            info = '<div style="font-size:13px;margin-top:8px;">' + exTypeLabel(ex.type) + ' — ' + cyEsc(ex.reason) + (ex.hasProof ? ' 📎' : '') + '</div>' +
-                '<div style="font-size:11px;color:var(--muted);margin-top:4px;">قدّمته: ' + exFull(ex.createdAt) + '</div>';
-            if (ex.status === 'rejected' && ex.rejectReason) info += '<div style="font-size:12px;color:#f87171;margin-top:4px;">سبب الرفض: ' + cyEsc(ex.rejectReason) + '</div>';
-            if (ex.status === 'accepted') info += '<div style="font-size:12px;color:#4ade80;margin-top:4px;">انسجّل في ملفك وبطاقتك كغياب بعذر' + (x.refunded ? ' ورجعت لك ' + x.refunded + ' نقطة' : '') + '</div>';
-        }
-        var ded = (x.excuseStatus === 'accepted' || x.excuseStatus === 'removed') ? '' : (x.deducted ? ' • انخصم عليك ' + x.deducted + ' نقطة' : ' • بدون خصم');
-        return '<div class="card" style="padding:12px;"><div class="row"><div><b>غياب عن الاستلام</b><div style="font-size:12px;color:var(--muted);margin-top:3px;">' + exFull(x.openedAt) + ded + '</div></div><div>' + right + '</div></div>' + info +
-            '<div id="ex-f-' + x.rowId + '"></div></div>';
-    }).join('');
-}
-function exOathText(id) {
-    var r = document.getElementById('ex-r-' + id);
-    var reason = r && r.value.trim() ? r.value.trim() : '(سبب الغياب)';
-    var nm = (ME && (ME.registeredName || ME.name)) || '(الاسم)';
-    return 'أُقسم بالله العظيم، أنا (' + nm + ')، بأن العذر الذي تقدمت به بشأن غيابي وهو (' + reason + ') صحيح، وأتحمل كامل المسؤولية عن صحة ما ذكرته، وأتعهد بعدم تقديم أي عذر غير صحيح، والله على ما أقول شهيد.';
-}
-function exOathRefresh(id) { var el = document.getElementById('ex-oath-' + id); if (el) el.textContent = exOathText(id); }
-function exOpen(id) {
-    var box = document.getElementById('ex-f-' + id);
-    if (!box) return;
-    if (box.innerHTML) { exVoiceReset(); box.innerHTML = ''; return; }
-    exVoiceReset();
-    box.innerHTML = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">' +
-        '<textarea id="ex-r-' + id + '" rows="3" maxlength="500" placeholder="اكتب عذرك هنا..." style="width:100%;" oninput="exOathRefresh(this.id.slice(5))"></textarea>' +
-        '<select id="ex-t-' + id + '"><option value="medical">🩺 طبي</option><option value="nonmedical">📄 بدون طبي</option></select>' +
-        '<div style="font-size:12px;color:#fbbf24;">دليل (إجباري) — صورة:</div>' +
-        '<input type="file" id="ex-p-' + id + '" accept="image/*">' +
-        '<div style="font-size:13px;color:var(--gold-soft);margin-top:4px;">📜 القسم (إجباري — لازم تقوله بصوتك):</div>' +
-        '<div id="ex-oath-' + id + '" style="padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;line-height:1.9;">' + accEsc(exOathText(id)) + '</div>' +
-        '<div id="ex-v-' + id + '"></div>' +
-        '<div class="row" style="gap:8px;justify-content:flex-start;"><button class="btn sm" data-id="' + id + '" onclick="exSend(this.dataset.id)">إرسال</button>' +
-        '<button class="btn gray sm" data-id="' + id + '" onclick="exOpen(this.dataset.id)">إلغاء</button></div></div>';
-    exVoicePaint(id);
-}
-// ---- تسجيل القسم الصوتي ----
-var EXV = { rec: null, stream: null, chunks: [], mime: '', t0: 0, timer: null, blob: null, dur: 0, id: null };
-function exVoiceReset() {
-    try { if (EXV.rec && EXV.rec.state !== 'inactive') { EXV.rec.onstop = null; EXV.rec.stop(); } } catch (e) {}
-    try { if (EXV.stream) EXV.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
-    if (EXV.timer) clearInterval(EXV.timer);
-    EXV = { rec: null, stream: null, chunks: [], mime: '', t0: 0, timer: null, blob: null, dur: 0, id: null };
-}
-function exVoicePaint(id) {
-    var box = document.getElementById('ex-v-' + id);
-    if (!box) return;
-    if (EXV.rec) {
-        box.innerHTML = '<div class="row" style="gap:10px;justify-content:flex-start;"><span class="sp-rec-dot"></span><b id="ex-vt-' + id + '">0:00</b>' +
-            '<button class="btn danger sm" data-id="' + id + '" onclick="exVoiceStop(this.dataset.id)">⏹️ إيقاف</button></div>';
-    } else if (EXV.blob) {
-        box.innerHTML = '<audio controls style="width:100%;" src="' + URL.createObjectURL(EXV.blob) + '"></audio>' +
-            '<div class="row" style="gap:8px;justify-content:flex-start;margin-top:6px;"><span style="color:#4ade80;font-size:13px;">✅ تم تسجيل القسم (' + EXV.dur + ' ث)</span>' +
-            '<button class="btn gray sm" data-id="' + id + '" onclick="exVoiceAgain(this.dataset.id)">🔁 إعادة التسجيل</button></div>';
-    } else {
-        box.innerHTML = '<button class="btn sm" data-id="' + id + '" onclick="exVoiceStart(this.dataset.id)">🎙️ سجّل القسم بصوتك</button>';
-    }
-}
-function exVoiceAgain(id) { exVoiceReset(); exVoicePaint(id); }
-async function exVoiceStart(id) {
-    if (!spVoiceSupported()) return toast('متصفحك ما يدعم تسجيل الصوت');
-    var stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-    catch (e) { return toast('اسمح للمايك من إعدادات المتصفح عشان تسجل القسم'); }
-    var mime = spVoicePickMime(), rec;
-    try { rec = mime ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32000 }) : new MediaRecorder(stream); }
-    catch (e) { stream.getTracks().forEach(function (t) { t.stop(); }); return toast('تعذر بدء التسجيل'); }
-    EXV.stream = stream; EXV.rec = rec; EXV.chunks = []; EXV.blob = null; EXV.id = id;
-    EXV.mime = String(rec.mimeType || mime || 'audio/webm').split(';')[0];
-    rec.ondataavailable = function (e) { if (e.data && e.data.size) EXV.chunks.push(e.data); };
-    rec.onstop = function () {
-        var dur = (Date.now() - EXV.t0) / 1000;
-        try { EXV.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
-        if (EXV.timer) { clearInterval(EXV.timer); EXV.timer = null; }
-        EXV.rec = null;
-        if (dur < 3 || !EXV.chunks.length) { EXV.chunks = []; toast('التسجيل قصير، اقرأ القسم كامل'); return exVoicePaint(id); }
-        var blob = new Blob(EXV.chunks, { type: EXV.mime });
-        EXV.chunks = [];
-        if (blob.size > 3.8 * 1024 * 1024) { toast('التسجيل كبير، قصّر'); return exVoicePaint(id); }
-        EXV.blob = blob; EXV.dur = Math.max(1, Math.round(dur));
-        exVoicePaint(id);
-    };
-    EXV.t0 = Date.now();
-    rec.start(250);
-    EXV.timer = setInterval(function () {
-        var el = document.getElementById('ex-vt-' + id);
-        if (el) el.textContent = spFmtDur((Date.now() - EXV.t0) / 1000);
-        if (Date.now() - EXV.t0 > 120000) exVoiceStop(id);
-    }, 200);
-    exVoicePaint(id);
-}
-function exVoiceStop(id) { try { if (EXV.rec && EXV.rec.state !== 'inactive') EXV.rec.stop(); } catch (e) {} }
-function exBlobToB64(blob) {
-    return new Promise(function (resolve, reject) {
-        var fr = new FileReader();
-        fr.onload = function () { resolve(String(fr.result).split(',')[1] || ''); };
-        fr.onerror = function () { reject(new Error('تعذر قراءة التسجيل')); };
-        fr.readAsDataURL(blob);
-    });
-}
-async function exSend(id) {
-    var r = document.getElementById('ex-r-' + id), t = document.getElementById('ex-t-' + id), p = document.getElementById('ex-p-' + id);
-    if (!r || !t) return;
-    var reason = r.value.trim();
-    if (reason.length < 3) return toast('اكتب العذر');
-    if (!p || !p.files || !p.files[0]) return toast('لازم ترفق دليل (صورة)');
-    if (!EXV.blob || EXV.id !== id) return toast('لازم تسجّل القسم بصوتك أول');
-    try {
-        var proof = await exCompress(p.files[0]);
-        var audio = await exBlobToB64(EXV.blob);
-        await api('/api/excuse/submit', { method: 'POST', body: JSON.stringify({ rowId: id, reason: reason, type: t.value, proof: proof, oath: true, audio: audio, audioMime: EXV.mime, audioDuration: EXV.dur }) });
-        exVoiceReset();
-        toast('✅ انرسل عذرك للقيادة');
-        exLoad();
-    } catch (e) { toast(e.message); }
-}
-function exOathBlock(x) {
-    if (!x.oathText && !x.hasAudio) return '';
-    return '<div style="margin-top:8px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px;line-height:1.8;">' +
-        '<div style="color:var(--gold-soft);">📜 القسم</div>' + (x.oathText ? accEsc(x.oathText) : '') +
-        (x.hasAudio ? '<audio controls preload="none" style="width:100%;margin-top:6px;" src="/api/hc/excuses/' + x._id + '/audio"></audio>' : '') + '</div>';
-}
-var HCEX = { f: 'pending' };
-function hcExSetFilter(f) { HCEX.f = f; loadHCExcuses(); }
-async function loadHCExcuses(silent) {
-    var box = document.getElementById('hc-content');
-    if (!box) return;
-    if (!silent) box.innerHTML = '<div class="card">جارِ التحميل...</div>';
-    var d;
-    try { d = await api('/api/hc/excuses?filter=' + HCEX.f); }
-    catch (e) { if (hcTab !== 'exc' || silent) return; box.innerHTML = '<div class="card" style="color:#f87171;">تعذر التحميل. (' + cyEsc(e.message) + ')</div>'; return; }
-    if (hcTab !== 'exc') return;
-    var chips = '<div class="card"><div class="row" style="justify-content:flex-start;">' +
-        attChip('⏳ المعلّقة' + (d.pendingCount ? ' (' + d.pendingCount + ')' : ''), HCEX.f === 'pending', 'hcExSetFilter', 'pending') +
-        attChip('📜 المنتهية', HCEX.f === 'done', 'hcExSetFilter', 'done') + '</div></div>';
-    var rows = d.list.length ? d.list.map(function (x) {
-        var meta = [x.unit, x.rank, x.sector].filter(Boolean).map(cyEsc).join(' • ') || '-';
-        var actions = '';
-        if (x.status === 'pending' || x.status === 'deciding') {
-            actions = '<div class="row" style="gap:8px;margin-top:10px;"><button class="btn sm" data-id="' + x._id + '" onclick="hcExDecide(this.dataset.id, ' + "'accept'" + ')">✅ قبول</button>' +
-                '<button class="btn danger sm" data-id="' + x._id + '" onclick="hcExDecide(this.dataset.id, ' + "'reject'" + ')">❌ رفض</button></div>';
-        } else {
-            actions = '<div style="margin-top:8px;">' + exBadge(x.status) + ' <span style="font-size:12px;color:var(--muted);">بواسطة ' + cyEsc(x.decidedByName || '-') + ' • ' + exFull(x.decidedAt) + '</span>' +
-                (x.status === 'accepted' && x.refunded ? '<div style="font-size:12px;color:#4ade80;margin-top:4px;">انسترجعت ' + x.refunded + ' نقطة</div>' : '') +
-                (x.status === 'rejected' && x.rejectReason ? '<div style="font-size:12px;color:#f87171;margin-top:4px;">سبب الرفض: ' + cyEsc(x.rejectReason) + '</div>' : '') + '</div>';
-        }
-        return '<div class="card"><b>' + cyEsc(x.name) + '</b><div style="font-size:12px;color:var(--muted);margin-top:2px;">' + meta + '</div>' +
-            '<div style="color:var(--gold-soft);margin-top:6px;">' + exTypeLabel(x.type) + ' — غياب ' + exFull(x.absenceAt) + '</div>' +
-            '<div style="font-size:13px;margin-top:6px;">العذر: ' + cyEsc(x.reason) + '</div>' +
-            (x.hasProof ? '<div style="margin-top:6px;"><button class="btn sm gray" data-id="' + x._id + '" onclick="hcExProof(this.dataset.id, this)">🖼️ عرض الدليل</button></div>' : '') + exOathBlock(x) +
-            '<div style="font-size:11px;color:var(--muted);margin-top:4px;">قُدّم: ' + exFull(x.createdAt) + '</div>' + actions + '</div>';
-    }).join('') : '<div class="card center" style="color:var(--muted);">' + (HCEX.f === 'pending' ? 'لا توجد أعذار معلّقة' : 'لا توجد أعذار منتهية') + '</div>';
-    paintSilent(box, 'hex' + HCEX.f, chips + rows, silent);
-}
-var SEX = { f: 'pending' };
-function sexSetFilter(f) { SEX.f = f; loadSeniorExcuses(); }
-async function loadSeniorExcuses(silent) {
-    var box = document.getElementById('admin-content');
-    if (!box || currentAdminTab !== 'excuses') return;
-    if (!silent) box.innerHTML = '<div class="card">جارِ التحميل...</div>';
-    var d;
-    try { d = await api('/api/hc/excuses?filter=' + SEX.f); }
-    catch (e) { if (currentAdminTab !== 'excuses' || silent) return; box.innerHTML = '<div class="card" style="color:#f87171;">تعذر التحميل. (' + cyEsc(e.message) + ')</div>'; return; }
-    if (currentAdminTab !== 'excuses') return;
-    var chips = '<div class="card"><div class="row" style="justify-content:flex-start;">' +
-        attChip('⏳ المعلّقة' + (d.pendingCount ? ' (' + d.pendingCount + ')' : ''), SEX.f === 'pending', 'sexSetFilter', 'pending') +
-        attChip('📜 المنتهية', SEX.f === 'done', 'sexSetFilter', 'done') + '</div></div>';
-    var rows = d.list.length ? d.list.map(function (x) {
-        var meta = [x.unit, x.rank, x.sector].filter(Boolean).map(cyEsc).join(' • ') || '-';
-        var actions = '';
-        if (x.status === 'pending' || x.status === 'deciding') {
-            actions = '<div class="row" style="gap:8px;margin-top:10px;"><button class="btn sm" data-id="' + x._id + '" data-a="accept" onclick="sexDecide(this.dataset.id, this.dataset.a)">✅ قبول</button>' +
-                '<button class="btn danger sm" data-id="' + x._id + '" data-a="reject" onclick="sexDecide(this.dataset.id, this.dataset.a)">❌ رفض</button></div>';
-        } else {
-            actions = '<div style="margin-top:8px;">' + exBadge(x.status) + ' <span style="font-size:12px;color:var(--muted);">بواسطة ' + cyEsc(x.decidedByName || '-') + '</span>' +
-                '<div style="font-size:12px;color:var(--muted);margin-top:4px;">🕒 وقت القرار: ' + exFull(x.decidedAt) + '</div>' +
-                (x.status === 'accepted' && x.refunded ? '<div style="font-size:12px;color:#4ade80;margin-top:4px;">انسترجعت ' + x.refunded + ' نقطة</div>' : '') +
-                (x.status === 'rejected' && x.rejectReason ? '<div style="font-size:12px;color:#f87171;margin-top:4px;">سبب الرفض: ' + cyEsc(x.rejectReason) + '</div>' : '') + '</div>';
-        }
-        return '<div class="card"><b>' + cyEsc(x.name) + '</b><div style="font-size:12px;color:var(--muted);margin-top:2px;">' + meta + '</div>' +
-            '<div style="color:var(--gold-soft);margin-top:6px;">' + exTypeLabel(x.type) + '</div>' +
-            '<div style="font-size:13px;margin-top:6px;">العذر: ' + cyEsc(x.reason) + '</div>' +
-            (x.hasProof ? '<div style="margin-top:6px;"><button class="btn sm gray" data-id="' + x._id + '" onclick="sexProof(this.dataset.id, this)">🖼️ عرض الدليل</button></div>' : '') + exOathBlock(x) +
-            '<div style="font-size:12px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);line-height:1.9;">' +
-                '<div>📥 <b>وقت الاستلام:</b> ' + exFull(x.absenceAt) + '</div>' +
-                '<div>📝 <b>وقت تنفيذ الطلب:</b> ' + exFull(x.createdAt) + '</div>' +
-            '</div>' + actions + '</div>';
-    }).join('') : '<div class="card center" style="color:var(--muted);">' + (SEX.f === 'pending' ? 'لا توجد طلبات غياب بعذر معلّقة' : 'لا توجد طلبات منتهية') + '</div>';
-    paintSilent(box, 'sex' + SEX.f, chips + rows, silent);
-}
-function sexProof(id, btn) {
-    api('/api/hc/excuses/' + id + '/proof').then(function (d) {
-        var im = document.createElement('img');
-        im.src = d.image; im.style.cssText = 'max-width:100%;border-radius:8px;margin-top:6px;display:block;';
-        btn.parentNode.appendChild(im); btn.remove();
-    }).catch(function (e) { toast(e.message); });
-}
-async function sexDecide(id, action) {
-    if (action === 'reject') {
-        var reason = await promptModal('اكتب سبب رفض العذر:');
-        if (reason === null) return;
-        if (!reason.trim()) return toast('لازم تكتب سبب');
-        api('/api/hc/excuses/' + id + '/reject', { method: 'POST', body: JSON.stringify({ reason: reason }) })
-            .then(function () { toast('تم الرفض وتثبّت الخصم'); loadSeniorExcuses(); }).catch(function (e) { toast(e.message); });
-        return;
-    }
-    if (!(await confirmModal('تقبل العذر؟ بينحذف الخصم وترجع النقاط للعضو.'))) return;
-    api('/api/hc/excuses/' + id + '/accept', { method: 'POST', body: '{}' })
-        .then(function (r) { toast('✅ انقبل العذر' + (r.refunded ? ' ورجعت ' + r.refunded + ' نقطة' : '')); loadSeniorExcuses(); }).catch(function (e) { toast(e.message); });
-}
-function hcExProof(id, btn) {
-    api('/api/hc/excuses/' + id + '/proof').then(function (d) {
-        var im = document.createElement('img');
-        im.src = d.image; im.style.cssText = 'max-width:100%;border-radius:8px;margin-top:6px;display:block;';
-        btn.parentNode.appendChild(im); btn.remove();
-    }).catch(function (e) { toast(e.message); });
-}
-async function hcExDecide(id, action) {
-    if (action === 'reject') {
-        var reason = await promptModal('اكتب سبب رفض العذر:');
-        if (reason === null) return;
-        if (!reason.trim()) return toast('لازم تكتب سبب');
-        api('/api/hc/excuses/' + id + '/reject', { method: 'POST', body: JSON.stringify({ reason: reason }) })
-            .then(function () { toast('تم الرفض وتثبّت الخصم'); loadHCExcuses(); }).catch(function (e) { toast(e.message); });
-        return;
-    }
-    if (!(await confirmModal('تقبل العذر؟ بينحذف الخصم وترجع النقاط للعضو.'))) return;
-    api('/api/hc/excuses/' + id + '/accept', { method: 'POST', body: '{}' })
-        .then(function (r) { toast('✅ انقبل العذر' + (r.refunded ? ' ورجعت ' + r.refunded + ' نقطة' : '')); loadHCExcuses(); }).catch(function (e) { toast(e.message); });
-}
-function attExBadge(x) {
-    if (x.excuseStatus === 'removed') return ' <span class="badge approved">🧹 أُزيل الغياب</span>';
-    if (x.onLeave) return ' <span class="badge approved">🌴 في إجازة</span>';
-    if (x.excuseStatus === 'pending') return ' <span class="badge pending">⏳ عذر معلّق</span>';
-    if (x.excuseStatus === 'accepted') return ' <span class="badge approved">🩺 غياب بعذر</span>';
-    if (x.excuseStatus === 'rejected') return ' <span class="badge rejected">❌ عذر مرفوض</span>';
-    return '';
-}
-var ATTRM = { mode: 'all', ex: {}, list: [] };
-function attRmOpen() {
-    var d = ATTP.data.absent;
-    if (!ME || !ME.isOwner || !d || !d.reception) return;
-    var list = d.list.filter(function (x) { return !x.onLeave && x.excuseStatus !== 'accepted' && x.excuseStatus !== 'removed'; });
-    if (!list.length) { toast('ما فيه غايبين تنشال عنهم'); return; }
-    ATTRM = { mode: 'all', ex: {}, list: list };
-    document.getElementById('wf-overlay').classList.add('open');
-    attRmPaint();
-}
-function attRmMode(m) { ATTRM.mode = m; attRmPaint(); }
-function attRmTog(u) { ATTRM.ex[u] = !ATTRM.ex[u]; attRmPaint(); }
-function attRmPaint() {
-    var st = ATTRM, box = document.getElementById('wf-box');
-    if (!box) return;
-    var exN = 0;
-    st.list.forEach(function (x) { if (st.ex[x.uid]) exN++; });
-    var isEx = st.mode === 'except';
-    var n = isEx ? st.list.length - exN : st.list.length;
-    var rows = st.list.map(function (x) {
-        var ex = isEx && st.ex[x.uid];
-        var tog = isEx ? ' data-u="' + cyEsc(x.uid) + '" onclick="attRmTog(this.dataset.u)"' : '';
-        return '<div class="card" style="padding:8px 12px;margin-top:6px;' + (isEx ? 'cursor:pointer;' : '') + (ex ? 'opacity:0.55;' : '') + '"' + tog + '><div class="row"><div><b>' + cyEsc(x.name) + '</b><div style="font-size:12px;color:var(--muted);margin-top:3px;">' + attMeta(x) + '</div></div>' +
-            '<span style="font-size:12px;">' + (ex ? '🔒 مستثنى (يبقى غيابه)' : '🧹 ينشال غيابه') + '</span></div></div>';
-    }).join('');
-    box.innerHTML = '<h3>🧹 إزالة الغياب (' + st.list.length + ' غايب)</h3>' +
-        '<div class="row" style="justify-content:flex-start;gap:6px;margin:8px 0;">' +
-            '<button class="btn sm ' + (isEx ? 'gray' : '') + '" data-m="all" onclick="attRmMode(this.dataset.m)">الكل</button>' +
-            '<button class="btn sm ' + (isEx ? '' : 'gray') + '" data-m="except" onclick="attRmMode(this.dataset.m)">مستثنى</button></div>' +
-        '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">' + (isEx ? 'اضغط على اللي تبي تستثنيهم (يبقى غيابهم)، والباقي ينشال عنهم الغياب وترجع نقاطهم.' : 'بينشال الغياب عن كل الغايبين وترجع نقاطهم، وينسجّل في ملفاتهم.') + '</div>' +
-        '<div style="max-height:45vh;overflow-y:auto;">' + rows + '</div>' +
-        '<div class="wf-actions"><button class="btn gray sm" onclick="closeWarnForm()">إلغاء</button><button class="btn sm" onclick="attRmGo()">تأكيد الإزالة (' + n + ')</button></div>';
-}
-async function attRmGo() {
-    var st = ATTRM, d = ATTP.data.absent;
-    if (!d || !d.reception) return;
-    var exc = Object.keys(st.ex).filter(function (k) { return st.ex[k]; });
-    var isEx = st.mode === 'except';
-    var n = isEx ? st.list.length - exc.length : st.list.length;
-    if (n <= 0) { toast('كل الغايبين مستثنين — ما فيه شي ينشال'); return; }
-    if (!(await confirmModal('تبي تشيل الغياب عن ' + n + ' شخص؟ بترجع نقاطهم وينسجّل في ملفاتهم.'))) return;
-    try {
-        var r = await api('/api/owner/att/remove-absence', { method: 'POST', body: JSON.stringify({ dayKey: d.reception.dayKey, mode: st.mode, exceptUids: isEx ? exc : [] }) });
-        toast('🧹 انشال الغياب عن ' + r.removed + (r.refunded ? ' ورجعت ' + r.refunded + ' نقطة' : ''));
-        closeWarnForm();
-        attLoad(false);
-    } catch (e) { toast(e.message); }
-}
 var SF = { t: null, seq: 0 };
 function sfOpen() {
     var box = document.getElementById('admin-content');
@@ -16384,7 +15523,7 @@ function sfFull(t) {
     try { return new Date(t).toLocaleString('ar-SA-u-ca-gregory', { timeZone: 'Asia/Riyadh', year: 'numeric', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch (e) { return '—'; }
 }
 function sfExtra(d) {
-    var p = d.personnel, a = d.account, at = d.attendance, rs = d.receipts || [], st = d.receiptStats || {};
+    var p = d.personnel, a = d.account, at = d.attendance;
     var yn = function (b) { return b ? 'نعم' : 'لا'; };
     var out = '';
     // معلومات الحساب
@@ -16397,7 +15536,7 @@ function sfExtra(d) {
         sfRow('حالة الحساب', cardEsc(a.status === 'approved' ? 'مقبول' : a.status === 'rejected' ? 'مرفوض' : 'معلّق')) +
         sfRow('كبير مسؤولين', yn(a.isSenior)) +
         sfRow('موقوف', yn(a.suspended)) +
-        sfRow('شرطة عسكرية', yn(a.isMP)) +
+        sfRow('شؤون عسكرية', yn(a.isMP)) +
         sfRow('تاريخ التسجيل', sfFull(a.createdAt)) +
         sfRow('راجعه', cardEsc(a.reviewedByTag || '-'))
     ) : sfRow('الحساب', '<span style="color:var(--muted);">ما له حساب مسجّل</span>');
@@ -16427,29 +15566,6 @@ function sfExtra(d) {
         sfRow('آخر تسجيل انصراف', sfFull(at.lastCheckOutAt))
     ) : sfRow('البصمة', '<span style="color:var(--muted);">ما سجّل حضور ولا مرة</span>');
     out += '<div class="id-card" style="margin-top:16px;"><div style="font-size:15px;font-weight:bold;color:var(--gold-soft);margin-bottom:8px;">🕒 البصمة</div><table>' + attRows + '</table></div>';
-    // الاستلامات
-    var kindLbl = function (r) {
-        if (r.kind === 'attended') return '<span style="color:#4ade80;">✅ حضر (+' + (r.gained || 1) + ')</span>';
-        if (r.kind === 'leave') return '<span style="color:#fbbf24;">🌴 إجازة</span>';
-        var ex = (r.excuseStatus === 'accepted' || r.removed || r.excuseStatus === 'removed') ? ' <span style="color:#4ade80;">(انشال الغياب' + (r.refunded ? ' • رجعت ' + r.refunded : '') + ')</span>'
-            : r.excuseStatus === 'pending' ? ' <span style="color:#fbbf24;">(عذر معلّق)</span>'
-            : r.excuseStatus === 'rejected' ? ' <span style="color:#f87171;">(عذر مرفوض)</span>' : '';
-        return '<span style="color:#f87171;">❌ غاب' + (r.deducted ? ' (-' + r.deducted + ')' : '') + '</span>' + ex;
-    };
-    var last = rs[0] || null;
-    var lastAtt = rs.filter(function (r) { return r.kind === 'attended'; })[0] || null;
-    var recHead = '<div style="font-size:15px;font-weight:bold;color:var(--gold-soft);margin-bottom:8px;">📣 الاستلامات (' + (st.total || 0) + ')</div>' +
-        '<table>' +
-        sfRow('آخر استلام', last ? sfFull(last.openedAt) + ' — ' + kindLbl(last) : '<span style="color:var(--muted);">ما له أي استلام</span>') +
-        sfRow('آخر استلام حضره', lastAtt ? sfFull(lastAtt.openedAt) : '—') +
-        sfRow('إجمالي الحضور', '<b style="color:#4ade80;">' + (st.attended || 0) + '</b>') +
-        sfRow('إجمالي الغياب', '<b style="color:#f87171;">' + (st.absent || 0) + '</b>') +
-        sfRow('إجمالي الإجازة', '<b>' + (st.leave || 0) + '</b>') +
-        '</table>';
-    var recList = rs.length ? '<div style="max-height:260px;overflow-y:auto;margin-top:10px;">' + rs.map(function (r) {
-        return '<div style="background:rgba(5,15,10,0.6);padding:8px;border-radius:8px;margin-top:6px;font-size:13px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>' + sfFull(r.openedAt || r.dayKey) + '</span><span>' + kindLbl(r) + '</span></div>';
-    }).join('') + '</div>' : '';
-    out += '<div class="id-card" style="margin-top:16px;">' + recHead + recList + '</div>';
     return out;
 }
 async function sfView(discord) {
@@ -16470,35 +15586,6 @@ async function sfView(discord) {
             '<table><tr><td>اليونت</td><td>' + cardEsc(p.unit || '-') + '</td></tr><tr><td>الرتبة</td><td>' + cardEsc(p.rank) + '</td></tr></table>' + notes + '</div>' +
             sfExtra(d);
     } catch (e) { box.innerHTML = '<div class="card" style="color:#f87171;">' + cardEsc(e.message) + '</div>'; }
-}
-function attPaintReception(d) {
-    var body = document.getElementById('att-body');
-    if (!body) return;
-    var P = [[1, 'اليوم'], [3, 'آخر ٣ أيام'], [7, 'آخر ٧ أيام'], [14, 'آخر ١٤ يوم']];
-    var chips = P.map(function (p) { return attChip(p[1], ATTP.days === p[0], 'attSetDays', p[0]); }).join('');
-    var r = d.reception;
-    var rmN = d.list.filter(function (x) { return !x.onLeave && x.excuseStatus !== 'accepted' && x.excuseStatus !== 'removed'; }).length;
-    var canRm = !!(ME && ME.isOwner && r.dayKey && rmN);
-    var head = '<div class="card"><div class="row" style="justify-content:flex-start;">' + chips + '</div>' +
-        '<div style="font-size:12px;color:var(--muted);margin-top:10px;">📣 انفتح الاستلام: ' + attFmtT(r.openedAt) + ' • بواسطة ' + cyEsc(r.openedByName || '-') + '</div>' +
-        (r.closedAt ? '<div style=\"font-size:12px;color:var(--muted);margin-top:4px;\">🔒 انسكّر الاستلام: ' + attFmtT(r.closedAt) + ' • بواسطة ' + cyEsc(r.closedByName || '-') + '</div>' : '') +
-        '<div class="row" style="margin-top:10px;"><div><b style="color:#4ade80;">' + r.attendedCount + '</b> <span style="color:var(--muted);font-size:13px;">حضروا (+١)</span> • ' +
-        '<b style="color:#f87171;">' + r.absentCount + '</b> <span style="color:var(--muted);font-size:13px;">غابوا (-٢)</span> • ' +
-        '<b>' + r.leaveCount + '</b> <span style="color:var(--muted);font-size:13px;">إجازة</span></div>' +
-        '<div class="row" style="gap:6px;">' + (canRm ? '<button class="btn sm" onclick="attRmOpen()">🧹 إزالة الغياب</button>' : '') + '<button class="btn sm gray" onclick="attCopyAbsent()">📋 نسخ الغايبين</button></div></div></div>';
-    var okRows = d.attended.length ? d.attended.map(function (x) {
-        return '<div class="card" style="padding:12px;"><div class="row"><div><b>' + cyEsc(x.name) + '</b><div style="font-size:12px;color:var(--muted);margin-top:3px;">' + attMeta(x) + '</div></div>' +
-            '<div><span class="badge approved">✅ حضر +١</span></div></div></div>';
-    }).join('') : '<div class="card center" style="color:var(--muted);">ما فيه أحد كان حاضر وقت إغلاق الاستلام</div>';
-    var abRows = d.list.length ? d.list.map(function (x) {
-        var pts = x.onLeave ? '' : ((x.excuseStatus === 'accepted' || x.excuseStatus === 'removed') ? (x.refunded ? 'رجعت ' + x.refunded + ' نقطة' : '') : (x.deducted ? '-' + x.deducted + ' نقطة' : 'بدون خصم'));
-        return '<div class="card" style="padding:12px;"><div class="row"><div><b>' + cyEsc(x.name) + '</b>' + attExBadge(x) +
-            '<div style="font-size:12px;color:var(--muted);margin-top:3px;">' + attMeta(x) + '</div></div>' +
-            '<div style="text-align:left;font-size:12px;color:#f87171;">' + pts + '</div></div></div>';
-    }).join('') : '<div class="card center" style="color:#4ade80;">🎉 الكل حاضر</div>';
-    body.innerHTML = head +
-        '<h3 style="margin:14px 0 8px;color:#4ade80;">✅ حضروا (' + d.attended.length + ')</h3>' + okRows +
-        '<h3 style="margin:14px 0 8px;color:#f87171;">❌ ما حضروا (' + d.list.length + ')</h3>' + abRows;
 }
 function hcShowImage(id, btn) {
     api('/api/high-command/promotion-requests/' + id + '/image').then(function (d) {
@@ -16834,7 +15921,7 @@ let poTab = 'members';
 function renderPersonnelOfficerPanel() {
     if (!ME.personnelOfficerInfo) return renderDashboard();
     document.getElementById('app').innerHTML = \`
-        <div class="card row"><h2>👥 مسؤول أفراد \${ME.personnelOfficerInfo.sectorLabel}</h2><button class="btn gray sm" onclick="renderDashboard()">رجوع للوحتي</button></div>
+        <div class="card row"><h2>👥 \${ME.personnelOfficerInfo.kind === 'oo' ? 'مسؤول ضباط' : 'مسؤول أفراد'} \${ME.personnelOfficerInfo.sectorLabel}</h2><button class="btn gray sm" onclick="renderDashboard()">رجوع للوحتي</button></div>
         <div class="card" style="color:var(--muted);font-size:13px;">صلاحيتك تشمل أفراد قطاعك من رتبة <b style="color:var(--gold-soft);">رئيس رقباء وتحت</b> فقط. طلبات الترقية/التنزيل ما تصير فورية — تروح كطلب لقائد أو نائب القطاع للموافقة.</div>
         <div class="tabs">
             <div class="tab active" onclick="poTabSwitch('members', this)">الأفراد</div>
@@ -16956,16 +16043,16 @@ let mpTab = 'members';
 function renderMPPanel() {
     if (!ME.mpInfo) return renderDashboard();
     document.getElementById('app').innerHTML = \`
-        <div class="card row"><h2>🚔 لوحة الشرطة العسكرية \${ME.mpInfo ? (' (' + (ME.mpInfo.role === 'commander' ? 'قائد' : 'نائب') + ')') : ''}</h2>
+        <div class="card row"><h2>🚔 لوحة الشؤون العسكرية \${ME.mpInfo ? (' (' + (ME.mpInfo.role === 'commander' ? 'قائد' : 'نائب') + ')') : ''}</h2>
             <div class="row" style="gap:8px;">
-                <button class="btn sm" style="background:#78350f;color:#fff;" onclick="openMPNoticeForm()">📢 إشعار لأفراد الشرطة العسكرية</button>
+                <button class="btn sm" style="background:#78350f;color:#fff;" onclick="openMPNoticeForm()">📢 إشعار لأفراد الشؤون العسكرية</button>
                 <button class="btn sm" onclick="openMPReportForm('renderMPPanel()')">+ تسجيل تقرير جديد</button>
                 <button class="btn gray sm" onclick="renderDashboard()">رجوع للوحتي</button>
             </div>
         </div>
         <div class="tabs">
             <div class="tab active" onclick="mpTabSwitch('members', this)">👤 العساكر</div>
-            <div class="tab" onclick="mpTabSwitch('force', this)">🚔 أفراد الشرطة العسكرية</div>
+            <div class="tab" onclick="mpTabSwitch('force', this)">🚔 أفراد الشؤون العسكرية</div>
             <div class="tab" onclick="mpTabSwitch('file', this)">📇 عرض ملف عسكري</div>
             <div class="tab" onclick="mpTabSwitch('requests', this)">📣 طلبات الاستدعاء</div>
             <div class="tab" onclick="mpTabSwitch('points', this)">⭐ طلبات النقاط</div>
@@ -16983,18 +16070,18 @@ function openMPNoticeForm() {
     if (!ME.mpInfo) return;
     const box = document.getElementById('wf-box');
     box.innerHTML = \`
-        <h3>📢 ضع نص الإشعار (سيصل لكل أفراد الشرطة العسكرية المسجلين بالموقع)</h3>
+        <h3>📢 ضع نص الإشعار (سيصل لكل أفراد الشؤون العسكرية المسجلين بالموقع)</h3>
         <textarea id="wf-reason-mp" placeholder="اكتب نص الإشعار هنا..."></textarea>
         <div class="wf-actions">
             <button class="btn gray sm" onclick="closeWarnForm()">إلغاء</button>
-            <button class="btn sm" onclick="submitMPNoticeForm()">إرسال لأفراد الشرطة العسكرية</button>
+            <button class="btn sm" onclick="submitMPNoticeForm()">إرسال لأفراد الشؤون العسكرية</button>
         </div>\`;
     document.getElementById('wf-overlay').classList.add('open');
 }
 async function submitMPNoticeForm() {
     const reason = document.getElementById('wf-reason-mp').value;
     if (!reason || !reason.trim()) return toast('لازم تكتب النص');
-    if (!(await confirmModal('متأكد تبي ترسل هذا الإشعار لكل أفراد الشرطة العسكرية؟'))) return;
+    if (!(await confirmModal('متأكد تبي ترسل هذا الإشعار لكل أفراد الشؤون العسكرية؟'))) return;
     try {
         const { count } = await api('/api/mp/notice-all', { method: 'POST', body: JSON.stringify({ reason }) });
         toast('✅ تم الإرسال لـ ' + count + ' عضو');
@@ -17009,7 +16096,7 @@ async function loadMPForceMembers() {
     try { data = await api('/api/mp/force-members'); }
     catch (e) { if (mpTab !== 'force') return; box.innerHTML = \`<div class="card" style="color:#f87171;">تعذر التحميل. (\${e.message})</div>\`; return; }
     if (mpTab !== 'force') return;
-    if (data.list.length === 0) { box.innerHTML = '<div class="card center" style="color:var(--muted);">لا يوجد أفراد شرطة عسكرية مسجلين بعد</div>'; return; }
+    if (data.list.length === 0) { box.innerHTML = '<div class="card center" style="color:var(--muted);">لا يوجد أفراد شؤون عسكرية مسجلين بعد</div>'; return; }
     box.innerHTML = data.list.map(p => \`
         <div class="card">
             <div class="row">
@@ -17188,7 +16275,7 @@ function openMPPointsForm(discord) {
     const box = document.getElementById('wf-box');
     box.innerHTML =
         '<h3>⭐ طلب نقاط' + (name ? ' — ' + mpEsc(name) : '') + '</h3>' +
-        '<p style="font-size:13px;color:var(--muted);margin-top:6px;">ما ينفّذ الطلب إلا بعد موافقة قائد الشرطة العسكرية ونائبه.</p>' +
+        '<p style="font-size:13px;color:var(--muted);margin-top:6px;">ما ينفّذ الطلب إلا بعد موافقة قائد الشؤون العسكرية ونائبه.</p>' +
         '<div class="wf-choice-row">' +
             '<button class="wf-notice" id="mpp-add" data-d="add" onclick="mpPtsPick(this.dataset.d)">➕ إضافة</button>' +
             '<button class="wf-warning" id="mpp-ded" data-d="deduct" onclick="mpPtsPick(this.dataset.d)">➖ خصم</button>' +
@@ -17218,7 +16305,7 @@ async function submitMPPointsForm() {
     if (!reason || !reason.trim()) return toast('لازم تكتب السبب');
     try {
         const r = await api('/api/mp/points-request', { method: 'POST', body: JSON.stringify({ target: mpPtsCtx.discord, direction: mpPtsCtx.direction, amount: amount, reason: reason.trim() }) });
-        toast(r && r.done ? '✅ تم تنفيذ الطلب' : '📩 تم إرسال الطلب لقائد الشرطة العسكرية ونائبه');
+        toast(r && r.done ? '✅ تم تنفيذ الطلب' : '📩 تم إرسال الطلب لقائد الشؤون العسكرية ونائبه');
         closeWarnForm();
         if (mpTab === 'points') loadMPPointsRequests();
     } catch (e) { toast(e.message); }
@@ -17298,7 +16385,7 @@ function renderMPReportCard(r, decideFn, isLeaderView) {
         <div class="card">
             <div class="row"><b>\${r.reporterName}</b> \${statusBadge}</div>
             <span style="color:var(--muted);font-size:12px;">(\${r.reporterRank})</span>
-            <div style="margin-top:6px;color:var(--gold-soft);">1) وش سوى بالاستلام:</div>
+            <div style="margin-top:6px;color:var(--gold-soft);">1) وش سوى خلال الشفت:</div>
             <div style="font-size:13px;margin-top:2px;">\${r.dutyReport}</div>
             <div style="margin-top:8px;color:var(--gold-soft);">2) عدد الجولات/الدوريات: <span style="color:#fff;">\${r.patrolsCount || 0}</span></div>
             <div style="margin-top:4px;color:var(--gold-soft);">3) عدد الاستدعاءات المنفّذة: <span style="color:#fff;">\${r.summonsCount || 0}</span></div>
@@ -17380,7 +16467,7 @@ async function loadMPPromotionLog() {
 async function loadMPPOBox() {
     const box = document.getElementById('mp-content');
     if (!box) return;
-    box.innerHTML = \`<div class="card"><h3>👮 مسؤول أفراد الشرطة العسكرية</h3><div id="mp-po-current">جارِ التحميل...</div><input id="mp-po-search" placeholder="🔍 ابحث عن اسم الشخص المسجل بالموقع..." oninput="searchMPPOCandidate(this.value)"><div id="mp-po-cands"></div></div>\`;
+    box.innerHTML = \`<div class="card"><h3>👮 مسؤول أفراد الشؤون العسكرية</h3><div id="mp-po-current">جارِ التحميل...</div><input id="mp-po-search" placeholder="🔍 ابحث عن اسم الشخص المسجل بالموقع..." oninput="searchMPPOCandidate(this.value)"><div id="mp-po-cands"></div></div>\`;
     try {
         const { mpLeadership } = await api('/api/senior/mp/leadership').catch(() => ({ mpLeadership: null }));
         const cur = mpLeadership || {};
@@ -17423,8 +16510,8 @@ let mpPoTab = 'members';
 function renderMPPOPanel() {
     if (!ME.mpPersonnelOfficer && !ME.isSeniorAdmin) return renderDashboard();
     document.getElementById('app').innerHTML = \`
-        <div class="card row"><h2>👮 مسؤول أفراد الشرطة العسكرية</h2><div class="row" style="gap:8px;">\${ME.mpPersonnelOfficer ? '<button class="btn sm" onclick="renderMPMemberPanel()">🚔 لوحة العضو</button>' : ''}<button class="btn gray sm" onclick="renderDashboard()">رجوع للوحتي</button></div></div>
-        <div class="card" style="color:var(--muted);font-size:13px;">صلاحيتك تشمل أعضاء الشرطة العسكرية ما عدا القائد والنائب.</div>
+        <div class="card row"><h2>👮 مسؤول أفراد الشؤون العسكرية</h2><div class="row" style="gap:8px;">\${ME.mpPersonnelOfficer ? '<button class="btn sm" onclick="renderMPMemberPanel()">🚔 لوحة العضو</button>' : ''}<button class="btn gray sm" onclick="renderDashboard()">رجوع للوحتي</button></div></div>
+        <div class="card" style="color:var(--muted);font-size:13px;">صلاحيتك تشمل أعضاء الشؤون العسكرية ما عدا القائد والنائب.</div>
         <div class="tabs">
             <div class="tab active" onclick="mpPoTabSwitch('members', this)">الأعضاء</div>
             <div class="tab" onclick="mpPoTabSwitch('reports', this)">التقارير</div>
@@ -17493,7 +16580,7 @@ let mpMemberListCache = [];
 function renderMPMemberPanel() {
     if (!ME.isMilitaryPolice) return renderDashboard();
     document.getElementById('app').innerHTML = \`
-        <div class="card row"><h2>🚔 الشرطة العسكرية</h2>
+        <div class="card row"><h2>🚔 الشؤون العسكرية</h2>
             <div class="row" style="gap:8px;">
                 <button class="btn sm" onclick="openMPReportForm('renderMPMemberPanel()')">+ تسجيل تقرير جديد</button>
                 \${ME.mpPersonnelOfficer ? '<button class="btn sm gray" onclick="renderMPPOPanel()">👮 إدارة الأفراد</button>' : ''}
@@ -17562,10 +16649,10 @@ function openMPReportForm(returnFn) {
     mpReportNotes = [];
     mpReportReturnFn = returnFn || 'renderMPMemberPanel()';
     document.getElementById('app').innerHTML = \`
-        <div class="card row"><h2>📝 تسجيل تقرير شرطة عسكرية</h2><button class="btn gray sm" onclick="\${mpReportReturnFn}">رجوع</button></div>
+        <div class="card row"><h2>📝 تسجيل تقرير شؤون عسكرية</h2><button class="btn gray sm" onclick="\${mpReportReturnFn}">رجوع</button></div>
         <div class="card">
-            <label>1) وش سويت بالاستلام؟</label>
-            <textarea id="mpr-duty" placeholder="اكتب وش سويت خلال الاستلام..."></textarea>
+            <label>1) وش سويت خلال الشفت؟</label>
+            <textarea id="mpr-duty" placeholder="اكتب وش سويت خلال الشفت..."></textarea>
         </div>
         <div class="card">
             <label>2) كم عدد الجولات/الدوريات اللي سويتها خلال الشفت؟</label>
@@ -17613,7 +16700,7 @@ function removeMPReportNoteRow(i) {
 }
 async function submitMPReport() {
     const dutyReport = document.getElementById('mpr-duty').value;
-    if (!dutyReport || !dutyReport.trim()) return toast('اكتب وش سويت بالاستلام');
+    if (!dutyReport || !dutyReport.trim()) return toast('اكتب وش سويت خلال الشفت');
     const body = {
         dutyReport,
         patrolsCount: document.getElementById('mpr-patrols').value,
@@ -17637,7 +16724,7 @@ function checkSummonGate() {
         box.innerHTML = \`
             <div class="card center" style="margin-top:60px;border-color:#f59e0b;">
                 <h2 style="color:#f59e0b;">⏳ بانتظار إنهاء الاستدعاء</h2>
-                <p style="color:var(--muted);margin-top:8px;">دخلت الاستدعاء — ما تقدر تستخدم الموقع لين تنهي قيادة الشرطة العسكرية الاستدعاء.</p>
+                <p style="color:var(--muted);margin-top:8px;">دخلت الاستدعاء — ما تقدر تستخدم الموقع لين تنهي قيادة الشؤون العسكرية الاستدعاء.</p>
                 <div class="row" style="gap:8px;margin-top:16px;justify-content:center;">
                     <button class="btn gray sm" onclick="window.open('${CONFIG.MP_SUMMON_VOICE_URL}','_blank')">🚪 فتح الروم مرة ثانية</button>
                     <button class="btn sm" onclick="init()">🔄 تحديث</button>
@@ -17647,7 +16734,7 @@ function checkSummonGate() {
         box.innerHTML = \`
             <div class="card center" style="margin-top:60px;border-color:#f59e0b;">
                 <h2 style="color:#f59e0b;">📣 لديك استدعاء</h2>
-                <p style="color:var(--muted);margin-top:8px;">استدعاء من الشرطة العسكرية — \${ME.summon.timeLabel || 'الآن'}</p>
+                <p style="color:var(--muted);margin-top:8px;">استدعاء من الشؤون العسكرية — \${ME.summon.timeLabel || 'الآن'}</p>
                 \${locked
                     ? \`<button class="btn gray" style="margin-top:16px;" onclick="toast('الروم بيفتح الساعة \${ME.summon.timeLabel}')">🔒 دخول الاستدعاء</button>\`
                     : \`<button class="btn" style="margin-top:16px;" onclick="enterSummon()">🚪 دخول الاستدعاء</button>\`}
@@ -17790,6 +16877,8 @@ async function loadVehicleList() {
         <div class="vcard">
             \${v.photo ? \`<img src="\${v.photo}">\` : ''}
             <div>\${v.name}</div>
+            <div style="font-size:11px;color:var(--gold-soft);">\${v.rank ? '🎖️ ' + v.rank : ''}</div>
+            <button class="btn gray sm" style="margin-top:4px;padding:3px 8px;font-size:10px;" data-id="\${v._id}" data-rank="\${v.rank || ''}" onclick="vehRankOpen(this.dataset.id, this.dataset.rank)">🎖️ الرتبة المخصصة</button>
             <button class="btn danger sm" style="margin-top:4px;padding:3px 8px;font-size:10px;" onclick="delVehicle('\${v._id}')">حذف</button>
         </div>\`).join('') || '<p style="color:var(--muted);">لا توجد مركبات</p>';
 }
@@ -17815,8 +16904,6 @@ function cardFields(p) {
         points: (p.points === undefined || p.points === null) ? '-' : String(p.points),
         note: p.notes === undefined ? '—' : (notes.length ? notes[notes.length - 1] : 'لا توجد ملاحظات'),
         notes: p.notes === undefined ? '—' : (notes.length ? notes.join(' | ') : 'لا توجد ملاحظات'),
-        excused: Array.isArray(p.excusedAbsences) ? (p.excusedAbsences.length ? p.excusedAbsences.slice().reverse().slice(0, 10).map(function (x) { return 'غياب بعذر — ' + exFull(x.absenceAt) + ' (اعتُمد ' + exFull(x.approvedAt) + ')'; }).join(' | ') : 'لا يوجد') : null,
-        removed: Array.isArray(p.removedAbsences) ? (p.removedAbsences.length ? p.removedAbsences.slice().reverse().slice(0, 10).map(function (x) { return 'غياب مُزال — ' + exFull(x.absenceAt) + ' (أُزيل ' + exFull(x.removedAt) + ')'; }).join(' | ') : 'لا يوجد') : null,
     };
 }
 const MC_DATA = {};
@@ -17864,7 +16951,6 @@ function mcInfoHtml(id) {
     const f = cardFields(p);
     let info = '';
     MC_ROWS.forEach(function (r) {
-        if ((r[0] === 'excused' || r[0] === 'removed') && f[r[0]] === null) return;
         info += '<div class="mc-row"><div class="mc-row-top"><span>' + r[1] + '</span><button class="mc-copy" onclick="mcCopy(this)">📋 نسخ</button></div><b data-k="' + r[0] + '">' + cardEsc(f[r[0]]) + '</b></div>';
     });
     const remain = o.hasProgress ? '<div class="mc-remain">' + remainText(o.nextRank, o.remaining) + '</div>' : '';
@@ -17990,7 +17076,7 @@ async function clearAllLogs() {
 }
 let accView_ = 'approved';
 let ACC_LIST = [];
-const ACC_SECTORS = [['', 'بدون قطاع'], ['lsbd', 'LSBD'], ['ssf', 'SSF'], ['militaryPolice', 'الشرطة العسكرية'], ['militaryAffairs', 'الشؤون العسكرية']];
+const ACC_SECTORS = [['', 'بدون قطاع'], ['lsbd', 'LSBD'], ['ssf', 'SSF'], ['militaryAffairs', 'الشؤون العسكرية']];
 function accEsc(t) {
     return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -18082,7 +17168,7 @@ function renderAccList() {
                    (canEdit ? '<button class="btn sm" data-uid="' + a.uid + '" onclick="openAccEdit(this.dataset.uid)">✏️ تعديل</button>' : '');
         }
         return '<div class="card acc-card">' +
-            '<div class="acc-title">' + accEsc(a.fullName) + (a.isSenior ? ' <span class="acc-tag">كبير مسؤولين' + (a.uid === ME.discordId ? ' (حسابك)' : '') + '</span>' : '') + (a.isMP ? ' <span class="acc-tag">شرطة عسكرية</span>' : '') + '</div>' +
+            '<div class="acc-title">' + accEsc(a.fullName) + (a.isSenior ? ' <span class="acc-tag">كبير مسؤولين' + (a.uid === ME.discordId ? ' (حسابك)' : '') + '</span>' : '') + (a.isMP ? ' <span class="acc-tag">شؤون عسكرية</span>' : '') + '</div>' +
             accRow('البريد', a.email) + accPwRow(a.password) + accRow('العمر', a.age) + accRow('الجنسية', a.nationality) +
             accRow('القطاع', accSectorLabel(a.sector)) +
             accRow('متفرغ للعمل؟', accYN(a.answers && a.answers.available)) +
@@ -18131,7 +17217,7 @@ function openAccEdit(uid) {
         '<label>البريد الإلكتروني</label><input id="ae-email" type="email" dir="ltr">' +
         '<label>كلمة المرور</label><input id="ae-pw" type="text" dir="ltr">' +
         '<label>القطاع</label>' + sec +
-        '<label class="acc-check"><input type="checkbox" id="ae-mp"> من الشرطة العسكرية</label>' +
+        '<label class="acc-check"><input type="checkbox" id="ae-mp"> من الشؤون العسكرية</label>' +
         '<div class="row" style="gap:8px;margin-top:14px;"><button class="btn gray" onclick="closeAccEdit()">إلغاء</button>' +
         '<button class="btn" data-uid="' + a.uid + '" onclick="saveAccEdit(this)">💾 حفظ</button></div></div>';
     document.body.appendChild(ov);
@@ -18162,7 +17248,7 @@ async function saveAccEdit(btn) {
     } catch (e) { toast(e.message); }
 }
 let voTab = 'pending';
-// ===== التحضير + مسؤولو القطاع (قائد القطاع / مسؤول التحضير / مسؤول المخالفات / الشرطة العسكرية) =====
+// ===== التحضير + مسؤولو القطاع (قائد القطاع / مسؤول التحضير / مسؤول المخالفات / الشؤون العسكرية) =====
 function attFmtMs(ms) {
     var m = Math.floor((ms || 0) / 60000), h = Math.floor(m / 60);
     return h ? (h + ' س ' + (m % 60) + ' د') : (m + ' د');
@@ -18186,14 +17272,6 @@ function attViewHtml(d) {
                 }).join('') : '<div style="color:var(--muted);margin-top:8px;">ما فيه أعضاء</div>') + '</div>';
         }).join('');
     }
-    var abs = d.absentToday || [];
-    h += '<div class="card"><h3>❌ غياب اليوم (' + abs.length + ')</h3>' +
-        (abs.length ? abs.map(function (r) {
-            var ex = r.excuseStatus === 'accepted' ? ' ✅ عذر مقبول' : r.excuseStatus === 'pending' ? ' ⏳ عذر قيد المراجعة' : r.excuseStatus === 'rejected' ? ' ❌ عذر مرفوض' : '';
-            return '<div class="row" style="padding:6px 0;border-top:1px solid var(--border);"><span>' + accEsc(r.name) +
-                ' <span style="color:var(--muted);font-size:12px;">(' + accEsc(r.rank || '-') + ' • ' + accEsc(r.unit || '-') + ')</span></span>' +
-                '<span style="color:var(--muted);font-size:12px;">' + accEsc(r.sector || '') + ex + '</span></div>';
-        }).join('') : '<div style="color:var(--muted);margin-top:8px;">لا يوجد غياب مسجّل اليوم</div>') + '</div>';
     return h;
 }
 async function loadAttInto(boxId) {
@@ -18625,7 +17703,7 @@ async function loadNotesPage() {
             <div class="row" style="gap:8px;flex-wrap:wrap;">
                 <button class="btn sm danger" onclick="openSectorNotesDelete('lsbd')">🗑️ ملاحظات LSBD</button>
                 <button class="btn sm danger" onclick="openSectorNotesDelete('ssf')">🗑️ ملاحظات SSF</button>
-                <button class="btn sm danger" onclick="openSectorNotesDelete('militaryPolice')">🗑️ ملاحظات الشرطة العسكرية</button>
+                
                 <button class="btn sm danger" onclick="openSectorNotesDelete('militaryAffairs')">🗑️ ملاحظات الشؤون العسكرية</button>
             </div>
         </div>\`;
@@ -19916,7 +18994,7 @@ function offQRefresh() {
 }
 /* ---- روم التدريب ---- */
 function offMyRole() { var p = VC ? offFindP(VC.state, VC.me) : null; return p ? p.role : ''; }
-function offRoleLabel(r) { if (r === 'mpl') return '🚔 قيادة الشرطة العسكرية'; if (r === 'mp') return '🚔 شرطة عسكرية'; if (r === 'member' && VC && VC.state && VC.state.freq) return '🎙️ عضو'; return r === 'senior' ? '🎖️ من الكبار' : (r === 'trainer' ? '🏋️ مدرب' : (r === 'trainee' ? 'متدرب' : (r === 'leader' ? '🛡️ قيادة السيبراني' : (r === 'member' ? '🛡️ عضو سيبراني' : (r === 'target' ? '⚠️ متحقق معه' : 'متقدم'))))); }
+function offRoleLabel(r) { if (r === 'mpl') return '🚔 قيادة الشؤون العسكرية'; if (r === 'mp') return '🚔 شؤون عسكرية'; if (r === 'member' && VC && VC.state && VC.state.freq) return '🎙️ عضو'; return r === 'senior' ? '🎖️ من الكبار' : (r === 'trainer' ? '🏋️ مدرب' : (r === 'trainee' ? 'متدرب' : (r === 'leader' ? '🛡️ قيادة السيبراني' : (r === 'member' ? '🛡️ عضو سيبراني' : (r === 'target' ? '⚠️ متحقق معه' : 'متقدم'))))); }
 function offCyKick(uid) {
     if (!VC || !VC.caseId) return;
     var cid = VC.caseId;
@@ -21117,7 +20195,7 @@ async function doFingerprintScan() {
 function flAttCardHtml() {
     if (!ME) return '';
     if (ME.att && ME.att.status === 'in') {
-        return '<div class="card att-card in"><b>✅ مسجّل حضورك</b>' + (ME.att.at ? ' <span style="font-size:12px;color:var(--muted);">منذ ' + flTime(ME.att.at) + '</span>' : '') + '</div>';
+        return '<div class="card att-card in"><b>✅ مسجّل حضورك</b>' + (ME.att.at ? ' <span style="font-size:12px;color:var(--muted);">منذ ' + flTime(ME.att.at) + '</span>' : '') + '</div>' + flVehHtml();
     }
     return '<div class="card att-card"><div class="row"><div><b>🖐️ ما سجّلت دخولك بعد</b>' +
         '<div style="color:var(--muted);font-size:12px;margin-top:3px;">سجّل بصمة الحضور عشان تقدر تسجّل مخالفة وتدخل التردد</div></div>' +
@@ -21125,51 +20203,13 @@ function flAttCardHtml() {
 }
 // ملاحظة: هنا التردد — زر التردد محذوف من الصفحة الرئيسية، والكود باقي ما انحذف
 function flFreqBtnHtml() { return '<button class="btn sm" onclick="flFreqOpen()">📻 تردد القطاعات المشتركة</button>'; }
-function flRcBtnHtml() {
-    if (!ME || !ME.isReceptionOfficer) return '';
-    if (!ME.isSeniorAdmin && !(ME.att && ME.att.status === 'in')) return '';
-    if (ME.receptionOpen) return '<button class=\"btn sm danger\" onclick=\"flReceptionClose()\">🔒 إغلاق الاستلام</button>';
-    return '';
-}
-function flRcRefresh() {
-    var w = document.getElementById('rc-btn-wrap');
-    if (!w) return;
-    var h = flRcBtnHtml();
-    if (w.innerHTML !== h) w.innerHTML = h;
-}
 function flAfterBtnsHtml() {
     var h = '';
     if (ME && ME.att && ME.att.status === 'in') {
         h += '<button class=\"btn sm btn-checkout\" onclick=\"renderFingerprint(\\'checkout\\')\">🚪 تسجيل انصراف</button>';
     }
-    if (ME && ME.isReceptionOfficer) h += '<span id=\"rc-btn-wrap\">' + flRcBtnHtml() + '</span>';
     return h;
 }
-async function flReceptionOpen() {
-    if (!(await confirmModal('تبي تفتح الاستلام وترسل إشعار للجميع؟ (الغيابات تنحسب لما تسكّر الاستلام)'))) return;
-    try {
-        var r = await api('/api/reception/open', { method: 'POST', body: '{}' });
-        ME.receptionOpen = r.receptionOpen || { openedAt: new Date().toISOString() };
-        flRcRefresh();
-        toast('📣 انفتح الاستلام — وصل لـ ' + r.sent + ' جهاز' + (r.discord ? ' + ديسكورد' : '') + ' — لا تنسى تسكّره');
-    } catch (e) {
-        if (e.message && /مفتوح|انسكّر|انفتح/.test(e.message)) { try { var f = await api('/api/me'); ME = f; } catch (x) {} flRcRefresh(); }
-        toast(e.message);
-    }
-}
-async function flReceptionClose() {
-    if (!(await confirmModal('تسكّر الاستلام؟ بيتم حساب الحضور والغياب الحين وخصم نقاط الغايبين.'))) return;
-    try {
-        var r = await api('/api/reception/close', { method: 'POST', body: '{}' });
-        ME.receptionOpen = null;
-        flRcRefresh();
-        toast('🔒 انسكّر الاستلام — حضروا ' + r.rec.attended + ' / غابوا ' + r.rec.absent + ' / إجازة ' + r.rec.leave);
-    } catch (e) {
-        if (e.message && /مو مفتوح|انسكّر/.test(e.message)) { try { var f = await api('/api/me'); ME = f; } catch (x) {} flRcRefresh(); }
-        toast(e.message);
-    }
-}
-
 /* ---------------- تردد القطاعات المشتركة ---------------- */
 function flAskNotif() {}
 async function flFreqOpen() {
@@ -21444,7 +20484,7 @@ function courtStart(uid, name, kind) {
         '<div id="ct-when"' + (inv ? ' style="display:none;"' : '') + '><label>اليوم</label><input type="date" id="ct-date" value="' + today + '">' +
         '<label>الساعة</label><select id="ct-hour">' + hours + '</select>' +
         '<label>الدقيقة</label><input type="number" id="ct-min" min="0" max="59" value="' + mm + '"></div>' +
-        '<div style="color:var(--muted);font-size:12px;margin-top:6px;">' + (direct ? (inv ? 'التحقيق ينفتح على طول (أو بالموعد اللي تحدده)، وينقفل حساب العضو لين يدخل الروم.' : 'بينحدد الموعد على طول، ولما يجي الوقت ينقفل حساب العضو لين يدخل المحكمة.') : 'الطلب يروح لقيادة الشرطة العسكرية، وإذا وافقوا ينحدد الموعد.') + '</div>' +
+        '<div style="color:var(--muted);font-size:12px;margin-top:6px;">' + (direct ? (inv ? 'التحقيق ينفتح على طول (أو بالموعد اللي تحدده)، وينقفل حساب العضو لين يدخل الروم.' : 'بينحدد الموعد على طول، ولما يجي الوقت ينقفل حساب العضو لين يدخل المحكمة.') : 'الطلب يروح لقيادة الشؤون العسكرية، وإذا وافقوا ينحدد الموعد.') + '</div>' +
         '<div class="wf-actions"><button class="btn gray sm" onclick="closeWarnForm()">إلغاء</button>' +
         '<button class="btn sm" id="ct-go" onclick="courtSubmit()">' + (direct ? '✅ تحديد الموعد' : '📨 إرسال للقيادة') + '</button></div>';
     document.getElementById('wf-overlay').classList.add('open');
@@ -21466,7 +20506,7 @@ async function courtSubmit() {
     try {
         var r = await api('/api/court/start', { method: 'POST', body: JSON.stringify(body) });
         closeWarnForm();
-        toast(r.status === 'pending' ? '📨 انرسل الطلب لقيادة الشرطة العسكرية، بانتظار موافقتهم' : (body.kind === 'inv' ? '🔎 تم فتح التحقيق' : '⚖️ تم تحديد موعد المحكمة'));
+        toast(r.status === 'pending' ? '📨 انرسل الطلب لقيادة الشؤون العسكرية، بانتظار موافقتهم' : (body.kind === 'inv' ? '🔎 تم فتح التحقيق' : '⚖️ تم تحديد موعد المحكمة'));
         if (document.getElementById('court-body')) courtPanelLoad(true);
     } catch (e) {
         if (e && e.data && e.data.choose) { COURT.pending = body; courtChoose(e.data.cases || []); return; }
@@ -21495,7 +20535,7 @@ async function courtSubmitMode(mode, joinId) {
     try {
         var r = await api('/api/court/start', { method: 'POST', body: JSON.stringify(body) });
         closeWarnForm(); COURT.pending = null;
-        toast(r.joined ? (body.kind === 'inv' ? '👥 تم ضمه للتحقيق القائم' : '👥 تم ضمه للمحكمة القائمة') : (r.requested ? '📨 انرسل طلب الضم لقيادة الشرطة العسكرية، بانتظار موافقتهم' : (r.status === 'pending' ? '📨 انرسل الطلب لقيادة الشرطة العسكرية، بانتظار موافقتهم' : (body.kind === 'inv' ? '🔎 تم فتح التحقيق' : '⚖️ تم تحديد موعد المحكمة'))));
+        toast(r.joined ? (body.kind === 'inv' ? '👥 تم ضمه للتحقيق القائم' : '👥 تم ضمه للمحكمة القائمة') : (r.requested ? '📨 انرسل طلب الضم لقيادة الشؤون العسكرية، بانتظار موافقتهم' : (r.status === 'pending' ? '📨 انرسل الطلب لقيادة الشؤون العسكرية، بانتظار موافقتهم' : (body.kind === 'inv' ? '🔎 تم فتح التحقيق' : '⚖️ تم تحديد موعد المحكمة'))));
         if (document.getElementById('court-body')) courtPanelLoad(true);
     } catch (e) { toast(e.message); }
 }
@@ -21759,7 +20799,7 @@ async function courtPanelLoad(silent) {
         h += '<div class="card"><h3>➕ ' + (cinv ? 'فتح تحقيق مع عضو' : 'إدخال عضو للمحكمة') + '</h3><div style="color:var(--muted);font-size:12px;margin-bottom:8px;">كبار المسؤولين يدخلون أي عضو للمحكمة حتى لو ما عليه تحقيق، ويحددون الموعد.</div>' +
             '<input id="court-q" placeholder="🔍 ابحث عن اسم العضو..." oninput="courtSearch(this.value)"><div id="court-cand"></div></div>';
     } else {
-        h += '<div class="card" style="color:var(--muted);font-size:13px;">لفتح محكمة أو تحقيق مع عضو: روح لتاب الأعضاء واضغط زر «⚖️ محكمة» أو «🔎 تحقيق» جنبه. ' + (st.leader ? 'تحقيقاتك ينحدد موعدها على طول.' : 'الطلب يروح لقيادة الشرطة العسكرية وإذا وافقوا ينحدد الموعد.') + '</div>';
+        h += '<div class="card" style="color:var(--muted);font-size:13px;">لفتح محكمة أو تحقيق مع عضو: روح لتاب الأعضاء واضغط زر «⚖️ محكمة» أو «🔎 تحقيق» جنبه. ' + (st.leader ? 'تحقيقاتك ينحدد موعدها على طول.' : 'الطلب يروح لقيادة الشؤون العسكرية وإذا وافقوا ينحدد الموعد.') + '</div>';
     }
     if (st.pending.length) h += '<h3 style="margin:14px 0 8px;">📥 طلبات التحقيق (' + st.pending.length + ')</h3>' + st.pending.map(function (c) { return courtCaseHtml(c, st); }).join('');
     h += '<h3 style="margin:14px 0 8px;">🕒 ' + (cinv ? 'تحقيقات مجدولة' : 'محاكم مجدولة') + ' (' + st.scheduled.length + ')</h3>' +
@@ -21827,51 +20867,119 @@ async function flFreqDel(n) {
     catch (e) { toast(e.message); }
 }
 
-/* ---------------- مسؤولو الاستلامات (داخل تاب قادة القطاعات) ---------------- */
-function flReceptionMount() {
-    var box = document.getElementById('admin-content');
-    if (!box || document.getElementById('rc-card')) return;
-    box.insertAdjacentHTML('beforeend', '<div class="card" id="rc-card"><h3>🎤 مسؤولو الاستلامات</h3>' +
-        '<div style="color:var(--muted);font-size:12px;margin-bottom:8px;">بعد ما يسجل المسؤول حضوره بالبصمة يظهر له زر «فتح استلام» (من 2 العصر إلى 9 الليل) — يوصل إشعار للجميع ورسالة بالديسكورد، وعند كل المسؤولين يتحول الزر إلى «إغلاق الاستلام»، ولما ينسكّر تنحسب الغيابات. تقدر تضيف أكثر من شخص.</div>' +
-        '<input placeholder="🔍 ابحث عن اسم الشخص المسجل بالموقع..." oninput="rcSearch(this.value)"><div id="rc-cand"></div><div id="rc-list" style="margin-top:10px;">جارِ التحميل...</div></div>');
-    rcLoad();
-}
-async function rcLoad() {
-    var box = document.getElementById('rc-list'); if (!box) return;
+
+/* ---------------- 🪖 المخالفات العسكرية ---------------- */
+var MV = { people: [], sel: null };
+async function renderMilViolation() {
+    if (!attOk()) return;
+    var app = document.getElementById('app');
+    app.innerHTML = "<div class='card'>جارِ التحميل...</div>";
     try {
-        var r = await api('/api/senior/reception');
-        if (!r.list.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px;">لا يوجد مسؤولي استلامات بعد</p>'; return; }
-        box.innerHTML = r.list.map(function (m) {
-            return '<div class="card" style="padding:8px 12px;margin-top:6px;"><div class="row"><span>' + spEsc(m.name) + '</span><button class="btn danger sm" data-u="' + m.id + '" onclick="rcRemove(this.dataset.u)">إزالة</button></div></div>';
-        }).join('');
-    } catch (e) { box.innerHTML = '<p style="color:#f87171;font-size:13px;">' + e.message + '</p>'; }
+        var r = await api('/api/milviol/people');
+        MV.people = r.list || []; MV.sel = null;
+    } catch (e) { toast(e.message); return renderDashboard(); }
+    app.innerHTML =
+        "<div class='card'><div class='row'><h2>🪖 تسجيل مخالفة عسكرية</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع</button></div>" +
+        "<label>العسكري المخالف (من فريق أول إلى جندي)</label>" +
+        "<input id='mv-search' placeholder='🔍 ابحث بالاسم أو الرتبة أو رقم البطاقة...' oninput='mvFilter(this.value)'>" +
+        "<div id='mv-sel' style='margin:8px 0;color:var(--muted);font-size:13px;'>لم تختر أحد بعد</div>" +
+        "<div id='mv-list' style='max-height:260px;overflow:auto;'></div>" +
+        "<label style='margin-top:10px;'>المخالفة اللي سواها (اكتبها كتابة)</label>" +
+        "<textarea id='mv-text' rows='5' maxlength='1000' placeholder='اكتب وش المخالفة اللي سواها...'></textarea>" +
+        "<button class='btn' id='mv-btn' style='margin-top:10px;' onclick='mvSubmit()'>إرسال للمراجعة</button></div>" +
+        "<div class='card'><h3>مخالفاتي العسكرية المسجلة</h3><div id='mv-mine'>جارِ التحميل...</div></div>";
+    mvFilter('');
+    mvLoadMine();
 }
-var rcTimer = null;
-function rcSearch(q) {
-    clearTimeout(rcTimer);
-    rcTimer = setTimeout(async function () {
-        var box = document.getElementById('rc-cand'); if (!box) return;
-        if (!q || !q.trim()) { box.innerHTML = ''; return; }
-        box.innerHTML = 'جارِ البحث...';
-        try {
-            var r = await api('/api/senior/personnel?q=' + encodeURIComponent(q), { noLock: true });
-            var list = (r.list || []).filter(function (p) { return p.registeredName; });
-            if (!list.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px;">لا نتائج</p>'; return; }
-            box.innerHTML = list.slice(0, 15).map(function (p) {
-                return '<div class="card" style="padding:8px 12px;margin-top:6px;"><div class="row"><span>' + spEsc(p.registeredName) + ' <span style="color:var(--muted);font-size:12px;">(' + spEsc(p.unit || '-') + ' • ' + spEsc(p.rank || '') + ')</span></span>' +
-                    '<button class="btn sm" data-u="' + p.discord + '" onclick="rcAdd(this.dataset.u)">إضافة</button></div></div>';
-            }).join('');
-        } catch (e) { box.innerHTML = '<p style="color:#f87171;font-size:13px;">' + e.message + '</p>'; }
-    }, 350);
+function mvFilter(q) {
+    var box = document.getElementById('mv-list');
+    if (!box) return;
+    q = String(q || '').trim().toLowerCase();
+    var list = MV.people.filter(function (x) {
+        if (!q) return true;
+        return (String(x.name || '') + ' ' + String(x.rank || '') + ' ' + String(x.card || '') + ' ' + String(x.unit || '')).toLowerCase().indexOf(q) > -1;
+    }).slice(0, 80);
+    box.innerHTML = list.length ? list.map(function (x) {
+        return "<div class='card' style='padding:8px 12px;margin-top:6px;cursor:pointer;' data-id='" + cyEsc(x.discord) + "' onclick='mvPick(this.dataset.id)'>" +
+            cyEsc(x.name) + " <span style='color:var(--muted);font-size:12px;'>(" + cyEsc(x.rank || '-') + (x.unit ? ' • ' + cyEsc(x.unit) : '') + ")</span></div>";
+    }).join('') : "<p style='color:var(--muted);font-size:13px;'>ما فيه نتائج</p>";
 }
-async function rcAdd(id) {
-    try { await api('/api/senior/reception/add', { method: 'POST', body: JSON.stringify({ discordId: id }) }); toast('تمت الإضافة'); var c = document.getElementById('rc-cand'); if (c) c.innerHTML = ''; rcLoad(); }
-    catch (e) { toast(e.message); }
+function mvPick(id) {
+    var x = MV.people.filter(function (p) { return p.discord === id; })[0];
+    if (!x) return;
+    MV.sel = x;
+    var el = document.getElementById('mv-sel');
+    if (el) el.innerHTML = "✅ المخالف: <b style='color:#4ade80;'>" + cyEsc(x.name) + "</b> (" + cyEsc(x.rank || '-') + ")";
 }
-async function rcRemove(id) {
-    if (!(await confirmModal('تزيله من مسؤولي الاستلامات؟'))) return;
-    try { await api('/api/senior/reception/remove', { method: 'POST', body: JSON.stringify({ discordId: id }) }); toast('تم'); rcLoad(); }
-    catch (e) { toast(e.message); }
+async function mvSubmit() {
+    if (!MV.sel) return toast('اختر العسكري المخالف أول');
+    var t = (document.getElementById('mv-text').value || '').trim();
+    if (!t) return toast('اكتب المخالفة');
+    var btn = document.getElementById('mv-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'جارِ الإرسال...'; }
+    try {
+        await api('/api/milviol/submit', { method: 'POST', body: JSON.stringify({ targetDiscord: MV.sel.discord, text: t }) });
+        toast('✅ انرسلت المخالفة للمراجعة');
+        renderMilViolation();
+    } catch (e) {
+        toast(e.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'إرسال للمراجعة'; }
+    }
+}
+function mvStatusBadge(s) {
+    return "<span class='badge " + s + "'>" + (s === 'pending' ? 'قيد المراجعة' : s === 'approved' ? 'مقبولة' : 'مرفوضة') + "</span>";
+}
+async function mvLoadMine() {
+    var box = document.getElementById('mv-mine');
+    if (!box) return;
+    try {
+        var r = await api('/api/milviol/mine');
+        box.innerHTML = r.list.length ? r.list.map(function (v) {
+            return "<div class='card' style='padding:10px;margin-top:6px;'><div class='row'><b>" + cyEsc(v.targetName) + " <span style='color:var(--muted);font-size:12px;'>(" + cyEsc(v.targetRank || '-') + ")</span></b>" + mvStatusBadge(v.status) + "</div>" +
+                "<div style='font-size:13px;margin-top:4px;'>" + cyEsc(v.text) + "</div>" +
+                (v.status === 'rejected' && v.rejectReason ? "<div style='font-size:12px;color:var(--muted);margin-top:4px;'>سبب الرفض: " + cyEsc(v.rejectReason) + "</div>" : '') + "</div>";
+        }).join('') : "<p style='color:var(--muted);'>ما سجلت مخالفات عسكرية بعد</p>";
+    } catch (e) { box.innerHTML = "<p style='color:#f87171;'>" + cyEsc(e.message) + "</p>"; }
+}
+function renderMilViolPanel() {
+    document.getElementById('app').innerHTML =
+        "<div class='card row'><h2>⚖️ مراجعة المخالفات العسكرية</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع للوحتي</button></div>" +
+        "<div id='mvp-box'>جارِ التحميل...</div>";
+    mvpLoad();
+}
+function mvpCard(v, actions) {
+    return "<div class='card' style='padding:12px;margin-top:8px;'><div class='row'><b>" + cyEsc(v.targetName) + " <span style='color:var(--muted);font-size:12px;'>(" + cyEsc(v.targetRank || '-') + ")</span></b>" + mvStatusBadge(v.status) + "</div>" +
+        "<div style='font-size:12px;color:var(--muted);margin-top:3px;'>سجّلها: " + cyEsc(v.reporterName) + " (" + cyEsc(v.reporterRank || '-') + ")</div>" +
+        "<div style='font-size:14px;margin-top:6px;'>" + cyEsc(v.text) + "</div>" +
+        (v.status === 'rejected' && v.rejectReason ? "<div style='font-size:12px;color:var(--muted);margin-top:4px;'>سبب الرفض: " + cyEsc(v.rejectReason) + "</div>" : '') +
+        (v.reviewedByName ? "<div style='font-size:12px;color:var(--muted);margin-top:4px;'>راجعها: " + cyEsc(v.reviewedByName) + "</div>" : '') +
+        (actions ? "<div class='row' style='gap:8px;margin-top:8px;justify-content:flex-start;'><button class='btn sm' data-id='" + v._id + "' onclick='mvDecide(this.dataset.id, true)'>✅ قبول</button><button class='btn danger sm' data-id='" + v._id + "' onclick='mvDecide(this.dataset.id, false)'>❌ رفض</button></div>" : '') + "</div>";
+}
+async function mvpLoad() {
+    var box = document.getElementById('mvp-box');
+    if (!box) return;
+    try {
+        var r = await api('/api/milviol/review-list');
+        box.innerHTML = "<div class='card'><h3>بانتظار المراجعة (" + r.pending.length + ")</h3>" +
+            (r.pending.length ? r.pending.map(function (v) { return mvpCard(v, true); }).join('') : "<p style='color:var(--muted);'>ما فيه مخالفات معلّقة 👌</p>") + "</div>" +
+            "<div class='card'><h3>آخر القرارات</h3>" +
+            (r.recent.length ? r.recent.map(function (v) { return mvpCard(v, false); }).join('') : "<p style='color:var(--muted);'>لا يوجد</p>") + "</div>";
+    } catch (e) { box.innerHTML = "<div class='card' style='color:#f87171;'>" + cyEsc(e.message) + "</div>"; }
+}
+async function mvDecide(id, ok) {
+    var body = {};
+    if (ok) {
+        if (!(await confirmModal('تقبل هذي المخالفة وتتسجل في ملف العسكري؟'))) return;
+    } else {
+        var reason = await promptModal('اكتب سبب الرفض');
+        if (!reason || !String(reason).trim()) return;
+        body.reason = String(reason).trim();
+    }
+    try {
+        await api('/api/milviol/' + id + (ok ? '/approve' : '/reject'), { method: 'POST', body: JSON.stringify(body) });
+        toast(ok ? '✅ انقبلت وانسجلت في ملفه' : '❌ انرفضت');
+        mvpLoad();
+    } catch (e) { toast(e.message); }
 }
 
 /* ---------------- جهاز واحد بالحساب (آخر جهاز يفوز) ---------------- */
@@ -21887,18 +20995,86 @@ function flSessionKicked() {
         '<p class="pwa-p">الحساب مفتوح الحين على جهاز أو تطبيق ثاني، والموقع يعتمد آخر جهاز دخلت منه.<br>إذا تبي ترجع لهذا الجهاز اضغط الزر.</p>' +
         '<div class="pwa-btns"><button class="btn" onclick="location.reload()">استخدام هذا الجهاز</button></div></div>';
 }
-/* الأمن السيبراني ما يكون له مسؤول أفراد */
-function flHideCyberPO() {
+/* الأمن السيبراني وSSF ما لهم مسؤول أفراد | مسؤول الضباط لـ LSBD فقط */
+function flHideSectorRole(sector, role, killNote) {
     try {
-        var b = document.querySelector('button[onclick*="openSectorPicker(\\'cyber\\',\\'personnelOfficer\\')"]');
+        var key = "openSectorPicker('" + sector + "','" + role + "')";
+        var b = Array.prototype.filter.call(document.querySelectorAll('button'), function (x) { return (x.getAttribute('onclick') || '').indexOf(key) > -1; })[0];
         if (!b) return;
         var row = b.parentElement && b.parentElement.parentElement;
         if (!row) return;
         var note = row.nextElementSibling;
-        if (note && /مسؤول الأفراد/.test(note.textContent || '')) note.remove();
+        if (killNote && note && /مسؤول الأفراد/.test(note.textContent || '')) note.remove();
         row.remove();
-        var pk = document.getElementById('picker-cyber-personnelOfficer'); if (pk) pk.remove();
+        var pk = document.getElementById('picker-' + sector + '-' + role); if (pk) pk.remove();
     } catch (e) {}
+}
+function flHideCyberPO() {
+    flHideSectorRole('cyber', 'personnelOfficer', true);
+    flHideSectorRole('ssf', 'personnelOfficer', false);
+    flHideSectorRole('cyber', 'officersOfficer', false);
+    flHideSectorRole('ssf', 'officersOfficer', true);
+    flHideSectorRole('militaryAffairs', 'officersOfficer', false);
+}
+/* لوحة قائد القطاع: SSF بدون مسؤول أفراد | LSBD فيها مسؤول ضباط */
+function flFixSectorPO() {
+    try {
+        var si = ME && ME.sectorInfo; if (!si) return;
+        var pk = document.getElementById('po-picker'); var card = pk && pk.parentElement;
+        if (!card) return;
+        if (si.sector === 'ssf') { card.remove(); return; }
+        if (si.sector !== 'lsbd') return;
+        var c = document.createElement('div'); c.className = 'card'; c.id = 'oo-card';
+        c.innerHTML = "<div class='row'><span>مسؤول الضباط: <b style='color:" + (si.officersOfficerName ? '#4ade80' : 'var(--muted)') + ";'>" + (si.officersOfficerName ? cyEsc(si.officersOfficerName) : 'غير معيّن') + "</b></span><div class='row' style='gap:6px;'><button class='btn sm gray' onclick='ooPicker()'>تعيين / تغيير</button>" + (si.officersOfficerName ? "<button class='btn danger sm' onclick='ooRemove()'>إزالة</button>" : '') + "</div></div><div style='color:var(--muted);font-size:12px;margin-top:6px;'>مسؤول الضباط يتحكم بالضباط من ملازم إلى فريق أول (ملاحظات وتحذيرات ومخالفاتهم) بنفس صلاحيات مسؤول الأفراد. طلبات الترقية والتنزيل تروح للقيادة العليا.</div><div id='oo-picker'></div>";
+        card.parentElement.insertBefore(c, card.nextSibling);
+    } catch (e) {}
+}
+var _flRSP = renderSectorPanel;
+renderSectorPanel = function () { _flRSP.apply(this, arguments); flFixSectorPO(); };
+async function ooPicker() {
+    var el = document.getElementById('oo-picker'); if (!el) return;
+    if (el.innerHTML.trim()) { el.innerHTML = ''; return; }
+    el.innerHTML = 'جارِ التحميل...';
+    try {
+        var r = await api('/api/sector/members');
+        var list = (r.list || []).filter(function (x) { return x.registeredName && MILITARY_RANKS.indexOf(x.rank) > MILITARY_RANKS.indexOf('رئيس رقباء'); });
+        el.innerHTML = list.length ? list.map(function (x) {
+            return "<div class='card' style='padding:8px 12px;margin-top:6px;'><div class='row'><span>" + cyEsc(x.registeredName) + " <span style='color:var(--muted);font-size:12px;'>(" + cyEsc(x.unit || '-') + " • " + cyEsc(x.rank) + ")</span></span><button class='btn sm' data-id='" + x.discord + "' onclick='ooAssign(this.dataset.id)'>تعيين</button></div></div>";
+        }).join('') : "<p style='color:var(--muted);font-size:13px;'>لا يوجد ضباط بالقطاع</p>";
+    } catch (e) { el.innerHTML = "<p style='color:#f87171;'>" + cyEsc(e.message) + "</p>"; }
+}
+async function ooAssign(id) {
+    try { await api('/api/sector/officers-officer/assign', { method: 'POST', body: JSON.stringify({ discordId: id }) }); toast('تم التعيين'); await refreshMe(); renderSectorPanel(); } catch (e) { toast(e.message); }
+}
+async function ooRemove() {
+    if (!(await confirmModal('تزيله من مسؤول الضباط؟'))) return;
+    try { await api('/api/sector/officers-officer/remove', { method: 'POST', body: '{}' }); toast('تم'); await refreshMe(); renderSectorPanel(); } catch (e) { toast(e.message); }
+}
+
+/* ---------------- 🚗 الرتبة المخصصة للمركبة ---------------- */
+var VR_ID = null;
+function vehRankOpen(id, cur) {
+    VR_ID = id;
+    ownerModalOpen('🎖️ الرتبة المخصصة للمركبة',
+        "<p style='color:var(--muted);font-size:13px;'>أي شخص رتبته هي المختارة تصير هذي مركبته، وتظهر له بعد ما يسجل دخوله بالبصمة.</p>" +
+        "<select id='vr-sel' style='width:100%;margin:8px 0;'><option value=''>بدون رتبة</option>" +
+        MILITARY_RANKS.map(function (r) { return "<option value='" + r + "'" + (r === cur ? " selected" : "") + ">" + r + "</option>"; }).join('') +
+        "</select><button class='btn' onclick='vehRankSave()'>حفظ</button>");
+}
+async function vehRankSave() {
+    var v = document.getElementById('vr-sel').value;
+    try {
+        await api('/api/senior/vehicles/' + VR_ID + '/rank', { method: 'POST', body: JSON.stringify({ rank: v }) });
+        ownerModalClose(); toast('تم الحفظ'); loadVehicleList();
+    } catch (e) { toast(e.message); }
+}
+function flVehHtml() {
+    if (!ME || !ME.myVehicles || !ME.myVehicles.length) return '';
+    return ME.myVehicles.map(function (v) {
+        return "<div class='card' style='display:flex;align-items:center;gap:12px;'>" +
+            (v.hasPhoto ? "<img src='/api/vehicle/" + v.id + "/img' style='width:96px;height:68px;object-fit:cover;border-radius:8px;'>" : '') +
+            "<div><div style='font-size:12px;color:var(--muted);'>🚗 مركبتك الخاصة</div><b>" + cyEsc(v.name) + "</b></div></div>";
+    }).join('');
 }
 
 
