@@ -2337,7 +2337,21 @@ function accView(a, withPw, viewerUid) {
     };
 }
 
+// بريد الدخول بعد القبول = اليونت@gmail.com (مع رقم إذا انأخذ)
+async function makeUnitEmail(a) {
+    let base = String(a.unit || "").toLowerCase().replace(/\s+/g, "").replace(/[^\p{L}\p{N}._-]/gu, "");
+    if (!base) return null;
+    base = base.slice(0, 40);
+    for (let i = 1; i <= 50; i++) {
+        const cand = base + (i === 1 ? "" : String(i)) + "@gmail.com";
+        if (!(await Account.exists({ email: cand, uid: { $ne: a.uid } }))) return cand;
+    }
+    return base + String(a.uid).slice(-4) + "@gmail.com";
+}
 async function approveAccount(a, actor) {
+    if (a.unit && !a.isSenior && !a.isOwner) {
+        try { const ne = await makeUnitEmail(a); if (ne) a.email = ne; } catch (e) { console.error("❌ makeUnitEmail:", e.message); }
+    }
     a.status = "approved"; a.rejectReason = null;
     a.reviewedBy = actor.id; a.reviewedByTag = actor.username; a.reviewedAt = new Date();
     await a.save();
@@ -14004,7 +14018,7 @@ function buildNav() {
         items.push({ label: '📝 تسجيل تقرير (شؤون عسكرية)', fn: "openMPReportForm('renderDashboard()')" });
     }
     if (ME.canMilViolation) items.push({ label: '📝 تسجيل مخالفة', fn: 'renderMilViolation()' });
-    if (ME.milViolReviewer) items.push({ label: '⚖️ مراجعة المخالفات العسكرية', fn: 'renderMilViolPanel()' });
+    if (ME.milViolReviewer && !ME.isSeniorAdmin) items.push({ label: '⚖️ مخالفات عسكرية معلّقة', fn: 'renderMilViolPanel()' });
     items.push(
         { label: '📋 مخالفاتي', fn: 'renderMinePage()' },
         { label: '🌴 الإجازات', fn: 'renderLeavePage()' },
@@ -14648,6 +14662,7 @@ function renderAdmin(startTab) {
     const tabsHtml = ME.isSeniorAdmin ? \`
         <div class="tabs">
             <div class="tab active" onclick="adminTab('pending', this)">المخالفات المعلّقة</div>
+            <div class="tab" id="tab-milviol" onclick="adminTab('milviol', this)">⚖️ مخالفات عسكرية معلّقة</div>
             <div class="tab" onclick="adminTab('reviewed', this)">✅ المخالفات المقبولة</div>
             <div class="tab" onclick="adminTab('sectors', this)">قادة القطاعات</div>
             <div class="tab" onclick="adminTab('regs', this)">📥 طلبات التسجيل</div>
@@ -14680,6 +14695,7 @@ function adminTab(name, el) {
     currentAdminTab = name;
     if (name === 'support') loadSupportTab();
     if (name === 'pending') loadPending();
+    if (name === 'milviol') loadMilViolTab();
     if (name === 'reviewed') loadReviewedViolations();
     if (name === 'sectors') loadSectors();
     if (name === 'regs') loadRegs();
@@ -21024,9 +21040,15 @@ async function mvLoadMine() {
         }).join('') : "<p style='color:var(--muted);'>ما سجلت مخالفات عسكرية بعد</p>";
     } catch (e) { box.innerHTML = "<p style='color:#f87171;'>" + cyEsc(e.message) + "</p>"; }
 }
+function loadMilViolTab() {
+    var c = document.getElementById('admin-content');
+    if (!c) return;
+    c.innerHTML = "<div id='mvp-box'>جارِ التحميل...</div>";
+    mvpLoad();
+}
 function renderMilViolPanel() {
     document.getElementById('app').innerHTML =
-        "<div class='card row'><h2>⚖️ مراجعة المخالفات العسكرية</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع للوحتي</button></div>" +
+        "<div class='card row'><h2>⚖️ مخالفات عسكرية معلّقة</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع للوحتي</button></div>" +
         "<div id='mvp-box'>جارِ التحميل...</div>";
     mvpLoad();
 }
