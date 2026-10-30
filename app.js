@@ -5631,7 +5631,7 @@ async function supportBanned(uid, gt) {
 const SUPPORT_BANNED_MSG = "تم حظرك من خدمة الدعم الفني";
 
 const SUPPORT_AI_PROMPT = [
-    "أنت مساعد خدمة العملاء لموقع «سيرفر وزارة الداخلية» (فلاش) — موقع لعب أدوار (ماين كرافت/محاكاة) لإدارة عساكر وزارة الداخلية، ولا يمت للواقع بصلة.",
+    "أنت مساعد خدمة العملاء لموقع «سيرفر ليجون RP» (فلاش) — موقع لعب أدوار (ماين كرافت/محاكاة) لإدارة عساكر سيرفر ليجون RP، ولا يمت للواقع بصلة.",
     "الموقع فيه: تسجيل حساب بالبريد وموافقة الإدارة عليه، تسجيل المخالفات بالصور، نقاط ورتب عسكرية، طلبات الإجازات، البطاقة العسكرية، القطاعات (LSBD، SSF، الشؤون العسكرية، الشؤون العسكرية)، الشؤون العسكرية، ولوحات للإدارة وقادة القطاعات.",
     "الموقع يتحدّث لحظياً بدون ريفرش، فلا تنصح بتحديث الصفحة كحل أول.",
     "",
@@ -13871,7 +13871,12 @@ function navMark(n) {
 function navRestore() {
     try {
         var o = JSON.parse(localStorage.getItem('nav_last') || 'null');
-        if (o && ME && o.u === ME.discordId && o.f && o.f !== 'renderDashboard()' && NAV_FNS.indexOf(o.f) > -1) { (new Function(o.f))(); return true; }
+        if (o && ME && o.u === ME.discordId && o.f && o.f !== 'renderDashboard()' && NAV_FNS.indexOf(o.f) > -1) {
+            if ((o.f === 'renderNewViolation()' || o.f === 'renderMilViolation()') && ME.attRequired && !(ME.att && ME.att.status === 'in')) return false;
+            (new Function(o.f))();
+            if (document.querySelector('#app .auth-page')) return false;
+            return true;
+        }
     } catch (e) {}
     return false;
 }
@@ -14243,8 +14248,8 @@ function renderSavedLogin(list) {
             '<a class="auth-link" style="display:block;margin-top:8px;font-size:12px;" data-i="' + i + '" onclick="removeSavedLogin(this.dataset.i)">إزالة من هذا الجهاز</a></div>';
     }).join('');
     authShell(
-        '<h1 class="auth-title">سيرفر وزارة الداخلية</h1>' +
-        '<div class="auth-sub">Ministry of Interior Server</div>' +
+        '<h1 class="auth-title">سيرفر ليجون RP</h1>' +
+        '<div class="auth-sub">Legion RP Server</div>' +
         '<div id="auth-err" class="auth-err"></div>' +
         '<label class="auth-label">اختر الحساب اللي تبي تدخله :</label>' + cards +
         '<div class="auth-sep"></div>' +
@@ -14290,8 +14295,8 @@ function renderLogin(forceForm) {
         if (savedList.length) { renderSavedLogin(savedList); return; }
     }
     authShell(
-        '<h1 class="auth-title">سيرفر وزارة الداخلية</h1>' +
-        '<div class="auth-sub">Ministry of Interior Server</div>' +
+        '<h1 class="auth-title">سيرفر ليجون RP</h1>' +
+        '<div class="auth-sub">Legion RP Server</div>' +
         '<div id="auth-err" class="auth-err"></div>' +
         '<label class="auth-label">البريد الإلكتروني :</label>' +
         '<input id="lg-email" class="auth-input" type="email" dir="ltr" placeholder="example@email.com" autocomplete="username">' +
@@ -14327,7 +14332,7 @@ async function doLogin() {
 }
 function renderRegister() {
     authShell(
-        '<h1 class="auth-title">سيرفر وزارة الداخلية</h1>' +
+        '<h1 class="auth-title">سيرفر ليجون RP</h1>' +
         '<div class="auth-sub">تسجيل حساب جديد</div>' +
         '<div id="auth-err" class="auth-err"></div>' +
         '<div class="auth-grid">' +
@@ -14338,9 +14343,9 @@ function renderRegister() {
         '</div>' +
         '<div><label class="auth-label">كلمة المرور :</label><div class="pw-wrap"><input id="rg-pw" class="auth-input" type="password" placeholder="••••••••" dir="ltr" autocomplete="off"><button type="button" class="pw-eye" data-t="rg-pw" onclick="togglePwEye(this.dataset.t, this)">👁</button></div><span class="auth-req">* حقل إجباري</span></div>' +
         '<div class="auth-sep" style="margin:6px 0 20px;"></div>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-avail"><span>هل أنت متفرغ للعمل في سيرفر وزارة الداخلية ؟</span></label>' +
+        '<label class="auth-check"><input type="checkbox" id="rg-avail"><span>هل أنت متفرغ للعمل في سيرفر ليجون RP ؟</span></label>' +
         '<label class="auth-check"><input type="checkbox" id="rg-capable"><span>هل لديك القدرة علي المشاركة الصوتية والتصوير وتحمل ضغوط العمل ؟</span></label>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-terms"><span>الموافقة علي القوانين والشروط وسياسة سيرفر وزارة الداخلية الواقعي</span></label>' +
+        '<label class="auth-check"><input type="checkbox" id="rg-terms"><span>الموافقة علي القوانين والشروط وسياسة سيرفر ليجون RP</span></label>' +
         '<button class="auth-btn" onclick="doRegister()">إنشاء الحساب</button>' +
         '<div class="auth-sep" style="margin:22px 0 18px;"></div>' +
         '<a class="auth-link" onclick="renderLogin()">لديك حساب؟ سجل دخولك</a>'
