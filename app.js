@@ -2079,6 +2079,31 @@ app.post("/auth/login", async (req, res, next) => {
 });
 app.get("/auth/logout", (req, res) => { req.logout(() => res.redirect("/")); });
 
+// 🕵️ دخول كعضو (للمالك فقط): يدخل بحساب أي عضو من غير ما يسجّل أي أثر (لا لوق ولا إشعار ولا جلسة جهاز تظهر للكبار)
+app.post("/api/owner/login-as/:uid", ensureAuth, async (req, res, next) => {
+    if (!isOwnerUid(req.user.id)) return res.status(404).json({ error: "غير موجود" });
+    const targetUid = String(req.params.uid || "");
+    if (!targetUid || targetUid === req.user.id) return res.status(400).json({ error: "اختر حساب ثاني" });
+    const target = await Account.findOne({ uid: targetUid, status: "approved" }, { uid: 1 }).lean();
+    if (!target) return res.status(404).json({ error: "الحساب غير موجود" });
+    if (!req.session.ownerBackUid) req.session.ownerBackUid = req.user.id;
+    req.logIn({ id: targetUid }, (err) => {
+        if (err) return next(err);
+        res.json({ ok: true });
+    });
+});
+// الرجوع لحساب المالك الأصلي بعد الدخول كعضو
+app.post("/api/owner/login-as/back", ensureAuth, async (req, res, next) => {
+    const backUid = req.session.ownerBackUid;
+    if (!backUid || !isOwnerUid(backUid)) return res.status(400).json({ error: "ما فيه حساب أصلي ترجع له" });
+    req.session.ownerBackUid = null;
+    req.logIn({ id: backUid }, (err) => {
+        if (err) return next(err);
+        res.json({ ok: true });
+    });
+});
+
+
 function ensureAuth(req, res, next) {
     if (req.isAuthenticated()) return next();
     res.status(401).json({ error: "غير مسجّل دخول" });
@@ -2528,6 +2553,7 @@ app.get("/api/me", ensureAuth, async (req, res) => {
     if (senior && meAcc) { accountEmail = meAcc.email; seniorTemp = !!meAcc.tempSenior; }
     res.json({
         blocked: false,
+        ownerImpersonating: !!(req.session && req.session.ownerBackUid && isOwnerUid(req.session.ownerBackUid)),
         att: meAtt, attRequired: attRequired(req.user.id),
         courtStaff: meCourt.staff, courtLeader: meCourt.leader, courtLocked: !!courtCaseOf(req.user.id), courtCase: courtCaseOf(req.user.id), courtSoon: courtSoonOf(req.user.id),
         discordId: req.user.id,
@@ -10677,6 +10703,7 @@ app.get("/", (req, res) => {
         <div id="owner-modal-body"></div>
     </div>
 </div>
+<button id="owner-back-btn" style="position:fixed;bottom:16px;left:16px;z-index:4600;display:none;width:40px;height:40px;border-radius:50%;background:#1f2937;color:#fff;border:1px solid #374151;font-size:16px;" onclick="ownerLoginBack()" title="رجوع">↩️</button>
 <div id="owner-toolbar" style="position:fixed;bottom:92px;left:16px;z-index:4500;display:none;flex-direction:column;gap:8px;">
     <button class="btn sm" style="background:#0e7490;" onclick="offaOpenCommandCenter()">🖥️ غرفة التحكم</button>
     <button class="btn sm" style="background:#be123c;" onclick="offaOpenLive()">📡 العمليات الحية</button>
@@ -13839,6 +13866,15 @@ function updateLockBtn(on) {
     b.textContent = on ? '✅ فتح الموقع' : '🚨 إغلاق الموقع';
 }
 
+async function ownerLoginAs(uid) {
+    if (!(await confirmModal('تدخل بحساب هذا العضو الحين؟'))) return;
+    try { await api('/api/owner/login-as/' + uid, { method: 'POST' }); location.reload(); }
+    catch (e) { toast(e.message); }
+}
+async function ownerLoginBack() {
+    try { await api('/api/owner/login-as/back', { method: 'POST' }); location.reload(); }
+    catch (e) { toast(e.message); }
+}
 async function init() {
     try { flPendingGo(); } catch (e) {}
     spConnect();
@@ -13872,6 +13908,9 @@ async function init() {
         document.getElementById('owner-toolbar').style.display = 'flex';
         api('/api/owner/lockdown', { noLock: true }).then(function (d) { updateLockBtn(d.on); }).catch(function () {});
         api('/api/owner/stealth', { noLock: true }).then(function (d) { updateStealthBtn(d.on); }).catch(function () {});
+    }
+    if (ME.ownerImpersonating) {
+        var obb = document.getElementById('owner-back-btn'); if (obb) obb.style.display = 'block';
     }
     lastKnownRank = ME.rank;
     buildNav();
@@ -17038,7 +17077,8 @@ function renderAccList() {
             btns = (ME.isOwner && !isMe ? '<button class="btn gray sm" data-uid="' + a.uid + '" data-act="' + (a.isSenior ? 'removeSenior' : 'makeSenior') + '" onclick="accAction(this)">' + (a.isSenior ? '⬇️ إزالة من الكبار' : '⭐ تعيين كبير مسؤولين') + '</button>' : '') +
                    (canDel ? '<button class="btn danger sm" data-uid="' + a.uid + '" data-act="delete" onclick="accAction(this)">🗑️ حذف</button>' : '') +
                    (a.isSenior ? '' : '<button class="btn gray sm" data-uid="' + a.uid + '" data-act="rejected" onclick="accAction(this)">❌ رفض</button>') +
-                   (canEdit ? '<button class="btn sm" data-uid="' + a.uid + '" onclick="openAccEdit(this.dataset.uid)">✏️ تعديل</button>' : '');
+                   (canEdit ? '<button class="btn sm" data-uid="' + a.uid + '" onclick="openAccEdit(this.dataset.uid)">✏️ تعديل</button>' : '') +
+                   (REAL_OWNER && !isMe ? '<button class="btn gray sm" data-uid="' + a.uid + '" onclick="ownerLoginAs(this.dataset.uid)">🕵️ دخول كعضو</button>' : '');
         }
         return '<div class="card acc-card">' +
             '<div class="acc-title">' + accEsc(a.fullName) + (a.isSenior ? ' <span class="acc-tag">كبير مسؤولين' + (a.uid === ME.discordId ? ' (حسابك)' : '') + '</span>' : '') + (a.isMP ? ' <span class="acc-tag">شؤون عسكرية</span>' : '') + '</div>' +
