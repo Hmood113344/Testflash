@@ -2551,9 +2551,10 @@ app.get("/api/me", ensureAuth, async (req, res) => {
         Account.findOne({ uid: req.user.id }, { sector: 1, email: 1, tempSenior: 1 }).lean(),
     ]);
     if (senior && meAcc) { accountEmail = meAcc.email; seniorTemp = !!meAcc.tempSenior; }
+    const ownerImpersonating = !!(req.session && req.session.ownerBackUid && isOwnerUid(req.session.ownerBackUid));
     res.json({
         blocked: false,
-        ownerImpersonating: !!(req.session && req.session.ownerBackUid && isOwnerUid(req.session.ownerBackUid)),
+        ownerImpersonating,
         att: meAtt, attRequired: attRequired(req.user.id),
         courtStaff: meCourt.staff, courtLeader: meCourt.leader, courtLocked: !!courtCaseOf(req.user.id), courtCase: courtCaseOf(req.user.id), courtSoon: courtSoonOf(req.user.id),
         discordId: req.user.id,
@@ -2582,8 +2583,8 @@ app.get("/api/me", ensureAuth, async (req, res) => {
         isHighCommand: isHighCommand(req.user.id, settings),
         cyber: meCyber,
         cyberLocked: underInvestigation.has(req.user.id),
-        deviceLocked: meDevLocked,
-        unassigned: meUnassigned,
+        deviceLocked: ownerImpersonating ? false : meDevLocked,
+        unassigned: ownerImpersonating ? false : meUnassigned,
         isViolationsOfficer: isViolationsOfficer(req.user.id, settings),
         sectorViolOfficer: getSectorViolOfficer(req.user.id, settings),
         sectorAttOfficer: getSectorAttOfficer(req.user.id, settings),
