@@ -2579,6 +2579,19 @@ async function milViolCaps(uid) {
 app.get("/api/milviol/people", ensureAuth, async (req, res) => {
     const c = await milViolCaps(req.user.id);
     if (!c.canSubmit) return res.status(403).json({ error: "تسجيل المخالفة العسكرية لمسؤولي القطاعات والشؤون العسكرية فقط" });
+    const q0 = String(req.query.q || "").trim().replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+    if (q0) {
+        const qe = q0.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const rx = new RegExp(qe, "i");
+        const owners = Array.from(ownerUids);
+        const found = await Personnel.find(
+            { registeredName: { $nin: [null, ""] }, discord: { $nin: owners.concat([req.user.id]) }, $or: [{ registeredName: rx }, { rank: rx }, { unit: rx }, { cardNumber: rx }, { discordTag: rx }] },
+            { discord: 1, registeredName: 1, rank: 1, unit: 1, cardNumber: 1 }
+        ).limit(80).maxTimeMS(15000).lean();
+        const accs2 = await Account.find({ uid: { $in: found.map(x => x.discord) }, status: "approved" }, { uid: 1, isOwner: 1 }).lean();
+        const ok2 = new Set(accs2.filter(a => !a.isOwner).map(a => a.uid));
+        return res.json({ list: found.filter(x => ok2.has(x.discord) && !isOwnerUid(x.discord)).map(x => ({ discord: x.discord, name: x.registeredName, rank: x.rank, unit: x.unit || "", card: x.cardNumber || "" })) });
+    }
     const accs = await Account.find({ status: "approved" }, { uid: 1, isOwner: 1 }).limit(8000).maxTimeMS(15000).lean();
     const ok = new Set(accs.filter(a => !a.isOwner && !isOwnerUid(a.uid)).map(a => a.uid));
     const ps = await Personnel.find({ registeredName: { $nin: [null, ""] } }, { discord: 1, registeredName: 1, rank: 1, unit: 1, cardNumber: 1 }).limit(8000).maxTimeMS(15000).lean();
@@ -9564,7 +9577,7 @@ app.post("/api/court/start", ensureAuth, async (req, res) => {
     if (!targetUid || targetUid === req.user.id) return res.status(400).json({ error: "ما تقدر تفتح تحقيق على نفسك" });
     const ta = await Account.findOne({ uid: targetUid, status: "approved" }, { isSenior: 1, isOwner: 1, tempSenior: 1 }).lean();
     if (!ta) return res.status(404).json({ error: "هذا العضو غير موجود" });
-    if (isSeniorAdmin(targetUid) || isOwnerUid(targetUid) || ta.isSenior || ta.isOwner || ta.tempSenior) return res.status(403).json({ error: "ما يمديك تفتح تحقيق على هذا الشخص" });
+    if (isOwnerUid(targetUid) || ta.isOwner) return res.status(403).json({ error: "ما يمديك تفتح تحقيق على هذا الشخص" });
     const startNow = kind === "inv" && !!b.now;
     const at = startNow ? new Date() : offBuildDate(b.date, b.hour, b.minute);
     if (!at) return res.status(400).json({ error: "حدد اليوم والساعة والدقيقة بشكل صحيح" });
@@ -14401,16 +14414,21 @@ async function loadMine(silent) {
     const box = document.getElementById('mine-list');
     try {
         const { list } = await api('/api/violations/mine');
+        let mvList = [];
+        try { mvList = (await api('/api/milviol/mine')).list || []; } catch (e2) {}
         const cEl = document.getElementById('mine-count');
-        if (cEl) cEl.textContent = list.length;
+        if (cEl) cEl.textContent = list.length + mvList.length;
         if (!box) return;
-        if (list.length === 0) { box.innerHTML = '<p style="color:var(--muted);">لا توجد مخالفات مسجلة بعد</p>'; return; }
+        const mvHtml = mvList.length ? ('<div style="margin-top:12px;font-size:13px;color:var(--gold-soft);">🪖 مخالفاتي العسكرية</div>' + mvList.map(function (m) {
+            return '<div style="background:rgba(5,15,10,0.6);padding:8px;border-radius:8px;margin-top:6px;font-size:13px;"><div class="row"><b>' + cyEsc(m.targetName) + ' <span style="color:var(--muted);font-size:12px;">(' + cyEsc(m.targetRank || '-') + ')</span></b>' + mvStatusBadge(m.status) + '</div><div style="margin-top:4px;">' + cyEsc(m.text) + '</div>' + (m.status === 'rejected' && m.rejectReason ? '<div style="font-size:11px;color:var(--muted);margin-top:3px;">' + cyEsc(m.rejectReason) + '</div>' : '') + '</div>';
+        }).join('')) : '';
+        if (list.length === 0) { box.innerHTML = (mvHtml || '<p style="color:var(--muted);">لا توجد مخالفات مسجلة بعد</p>'); return; }
         box.innerHTML = \`<table><tr><th></th><th>النوع</th><th>المركبة</th><th>اللوحة</th><th>الحالة</th></tr>\` +
             list.map(v => \`<tr>
                 <td>\${v.hasPhoto ? \`<img class="vthumb" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2286%22 height=%2266%22><rect width=%2286%22 height=%2266%22 rx=%228%22 fill=%22%230d1f3c%22/><text x=%2243%22 y=%2244%22 font-size=%2228%22 text-anchor=%22middle%22>📷</text></svg>'" src="/api/violations/\${v._id}/thumb" onclick="viewViolationPhoto('\${v._id}')">\` : '—'}</td>
                 <td>\${v.kind === 'report' ? ('🧪 تقرير مكافحة مخدرات — ' + v.reportCategory) : v.violationType}</td><td>\${v.vehicle}</td><td>\${v.plateNumber}</td>
                 <td><span class="badge \${v.status}">\${v.status === 'pending' ? 'قيد المراجعة' : v.status === 'approved' ? 'مقبولة' : 'مرفوضة'}</span>\${v.status === 'rejected' && v.rejectReason ? \`<div style="font-size:11px;color:var(--muted);margin-top:3px;">\${v.rejectReason}</div>\` : ''}</td>
-            </tr>\`).join('') + '</table>';
+            </tr>\`).join('') + '</table>' + mvHtml;
     } catch (e) {
         if (box) box.innerHTML = \`<p style="color:#f87171;">تعذر تحميل مخالفاتي، حاول تحدّث الصفحة. (\${e.message})</p>\`;
     }
@@ -20712,14 +20730,25 @@ async function renderMilViolation() {
     mvFilter('');
     mvLoadMine();
 }
+var mvTimer = null;
 function mvFilter(q) {
     var box = document.getElementById('mv-list');
     if (!box) return;
-    q = String(q || '').trim().toLowerCase();
-    var list = MV.people.filter(function (x) {
-        if (!q) return true;
-        return (String(x.name || '') + ' ' + String(x.rank || '') + ' ' + String(x.card || '') + ' ' + String(x.unit || '')).toLowerCase().indexOf(q) > -1;
-    }).slice(0, 80);
+    q = String(q || '').trim();
+    clearTimeout(mvTimer);
+    if (!q) { mvRender(MV.people.slice(0, 80)); return; }
+    mvTimer = setTimeout(async function () {
+        try {
+            var r = await api('/api/milviol/people?q=' + encodeURIComponent(q), { noLock: true });
+            var b2 = document.getElementById('mv-list'); if (!b2) return;
+            var seen = {}; (r.list || []).forEach(function (x) { seen[x.discord] = 1; MV.people.push(x); });
+            mvRender(r.list || []);
+        } catch (e) { var b3 = document.getElementById('mv-list'); if (b3) b3.innerHTML = "<p style='color:#f87171;font-size:13px;'>" + cyEsc(e.message) + "</p>"; }
+    }, 300);
+}
+function mvRender(list) {
+    var box = document.getElementById('mv-list');
+    if (!box) return;
     box.innerHTML = list.length ? list.map(function (x) {
         return "<div class='card' style='padding:8px 12px;margin-top:6px;cursor:pointer;' data-id='" + cyEsc(x.discord) + "' onclick='mvPick(this.dataset.id)'>" +
             cyEsc(x.name) + " <span style='color:var(--muted);font-size:12px;'>(" + cyEsc(x.rank || '-') + (x.unit ? ' • ' + cyEsc(x.unit) : '') + ")</span></div>";
