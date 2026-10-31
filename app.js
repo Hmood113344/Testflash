@@ -34,7 +34,7 @@ const CONFIG = {
 
     SITE_NAME: "فلاش",
     SITE_URL: "https://flash1-gtsp.onrender.com",
-    SESSION_SECRET: "غيّر_هذا_السر_2026",
+    SESSION_SECRET: "norv_flash_legon_secret_111",
     PORT: 7700,
 
     ADMIN_EMAIL: "admin@moi.sa.com",
