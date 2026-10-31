@@ -121,7 +121,7 @@ const CONFIG = {
 };
 
 mongoose.connect(CONFIG.MONGO_URI)
-    .then(async () => { console.log("✅ MongoDB connected"); await copyOldMainDb().catch(e => console.error("❌ فشل نسخ القاعدة القديمة:", e.message)); await ensureSeniorAccount(); await ensureCardNumbers(); await ensureSectorFields(); await loadInvestigations(); await loadCourt(); })
+    .then(async () => { console.log("✅ MongoDB connected"); await copyOldMainDb().catch(e => console.error("❌ فشل نسخ القاعدة القديمة:", e.message)); await ensureSeniorAccount(); await repairApprovedPersonnel(); await ensureCardNumbers(); await ensureSectorFields(); await loadInvestigations(); await loadCourt(); })
     .catch(err => console.log("❌ MongoDB error:", err));
 
 // ── قاعدة بيانات منفصلة لصور المخالفات (base64): حط عنوانها في PHOTOS_MONGO_URI ──
@@ -2257,21 +2257,50 @@ async function approveAccount(a, actor) {
     a.status = "approved"; a.rejectReason = null;
     a.reviewedBy = actor.id; a.reviewedByTag = actor.username; a.reviewedAt = new Date();
     if (a.discordUser) a.dmStatus = "pending";
-    await a.save();
     const settings = await getSettings();
     await Personnel.findOneAndUpdate(
         { discord: a.uid },
         {
             $set: { registeredName: a.fullName, discordTag: a.fullName, sector: a.sector || null, ...(a.unit ? { unit: a.unit } : {}) },
             $setOnInsert: {
-                unit: a.sector ? (CONFIG.SECTORS[a.sector] || "غير محدد") : "غير محدد",
+                ...(a.unit ? {} : { unit: a.sector ? (CONFIG.SECTORS[a.sector] || "غير محدد") : "غير محدد" }),
                 leaveBalance: settings.leaveBalanceDefault ?? CONFIG.DEFAULT_LEAVE_BALANCE,
             },
         },
         { upsert: true, new: true }
     );
+    await a.save();
     await ensureCardNumbers();
     if (a.isSenior) await refreshSeniors();
+}
+
+// إصلاح: حسابات مقبولة ما انعمل لها سجل فرد (بسبب خطأ قديم) — تنعمل لها عشان تطلع بالبحث
+async function repairApprovedPersonnel() {
+    try {
+        const accs = await Account.find({ status: "approved", fullName: { $nin: [null, ""] } }, { uid: 1, fullName: 1, sector: 1, unit: 1 }).limit(8000).lean();
+        if (!accs.length) return;
+        const have = await Personnel.find({ discord: { $in: accs.map(a => a.uid) }, registeredName: { $nin: [null, ""] } }, { discord: 1 }).lean();
+        const hs = new Set(have.map(x => x.discord));
+        const settings = await getSettings();
+        let n = 0;
+        for (const a of accs) {
+            if (hs.has(a.uid)) continue;
+            await Personnel.findOneAndUpdate(
+                { discord: a.uid },
+                {
+                    $set: { registeredName: a.fullName, ...(a.sector ? { sector: a.sector } : {}), ...(a.unit ? { unit: a.unit } : {}) },
+                    $setOnInsert: {
+                        discordTag: a.fullName,
+                        ...(a.unit ? {} : { unit: a.sector ? (CONFIG.SECTORS[a.sector] || "غير محدد") : "غير محدد" }),
+                        leaveBalance: settings.leaveBalanceDefault ?? CONFIG.DEFAULT_LEAVE_BALANCE,
+                    },
+                },
+                { upsert: true }
+            );
+            n++;
+        }
+        if (n) { await ensureCardNumbers(); console.log("🔧 تم إصلاح " + n + " حساب بدون سجل فرد"); }
+    } catch (e) { console.error("❌ فشل إصلاح سجلات الأفراد:", e.message); }
 }
 
 async function rejectAccount(a, actor, reason) {
