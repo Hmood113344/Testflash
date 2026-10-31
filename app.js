@@ -11448,7 +11448,7 @@ function uaHardLock() {
     if (!h) { h = document.createElement('div'); h.id = 'ua-hardlock'; document.body.appendChild(h); }
     if (!h.getAttribute('data-ready')) {
         h.setAttribute('data-ready', '1');
-        h.innerHTML = '<div class="ua-box"><div style="font-size:50px">🚫</div><h2>ما يمديك تدخل</h2><div>ما عندك رتبة أو يونت أو قطاع (أو ينقصك واحد منها)، لذلك حسابك متوقف ومخالفاتك ما تنقبل.</div><div style="margin-top:8px;color:#cbd5e1;">لازم تفتح تكت خدمة عملاء من الزر اللي تحت، وإذا انعطيت رتبتك ويونتك وقطاعك ينفتح حسابك.</div><button class="btn" style="width:100%;padding:14px;font-size:16px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);" onclick="spOpen()">🎧 خدمة عملاء</button></div>';
+        h.innerHTML = '<div class="ua-box"><div style="font-size:50px">🚫</div><h2>ما يمديك تدخل</h2><div>ما عندك رتبة أو يونت أو قطاع (أو ينقصك واحد منها)، لذلك حسابك متوقف ومخالفاتك ما تنقبل.</div><div style="margin-top:8px;color:#cbd5e1;">لازم تفتح تكت خدمة عملاء من الزر اللي تحت، وإذا انعطيت رتبتك ويونتك وقطاعك ينفتح حسابك.</div><button class="btn" style="width:100%;padding:14px;font-size:16px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);" onclick="spOpen()">🎧 خدمة عملاء</button><a href="/auth/logout" style="display:block;text-align:center;margin-top:10px;padding:10px;border-radius:10px;background:#374151;color:#fff;text-decoration:none;font-size:14px;">تسجيل خروج</a></div>';
     }
 }
 function dvHardLock() {
@@ -11472,7 +11472,7 @@ function dvHardLock() {
     if (!h) { h = document.createElement('div'); h.id = 'ua-hardlock'; document.body.appendChild(h); }
     if (h.getAttribute('data-kind') !== 'device') {
         h.setAttribute('data-kind', 'device'); h.setAttribute('data-ready', '1');
-        h.innerHTML = '<div class="ua-box"><div style="font-size:50px">🔒</div><h2>هذا الجهاز تحت التحقيق</h2><div>هذا الجهاز دخل على حساب عضو ثاني، وانفتح عليه تحقيق سيبراني.<br>ما تقدر تسوي أي شي من هذا الجهاز لين ينتهي التحقيق.</div></div>';
+        h.innerHTML = '<div class="ua-box"><div style="font-size:50px">🔒</div><h2>هذا الجهاز تحت التحقيق</h2><div>هذا الجهاز دخل على حساب عضو ثاني، وانفتح عليه تحقيق سيبراني.<br>ما تقدر تسوي أي شي من هذا الجهاز لين ينتهي التحقيق.</div><a href="/auth/logout" style="display:block;text-align:center;margin-top:10px;padding:10px;border-radius:10px;background:#374151;color:#fff;text-decoration:none;font-size:14px;">تسجيل خروج</a></div>';
     }
 }
 function uaHardClear() {
