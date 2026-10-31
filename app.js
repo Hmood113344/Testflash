@@ -33,8 +33,10 @@ const CONFIG = {
     MONGO_URI: process.env.MONGO_URI || "",
 
     SITE_NAME: "فلاش",
+    APPLY_BOT_URL: process.env.BOT_APPLY_URL || "",
+    APPLY_BOT_ID: process.env.APPLY_BOT_ID || "",
     SITE_URL: "https://flash1-gtsp.onrender.com",
-    SESSION_SECRET: "norv_flash_legon_secret_111",
+    SESSION_SECRET: "غيّر_هذا_السر_2026",
     PORT: 7700,
 
     ADMIN_EMAIL: "admin@moi.sa.com",
@@ -335,6 +337,10 @@ const AccountSchema = new mongoose.Schema({
     nationality: String,
     passwordHash: String,
     passwordEnc: String,
+    discordUser: { type: String, default: null, index: true },
+    discordTag: { type: String, default: null },
+    unit: { type: String, default: null },
+    dmStatus: { type: String, default: null },
     status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
     isSenior: { type: Boolean, default: false },
     isOwner: { type: Boolean, default: false },
@@ -1674,6 +1680,13 @@ client.on("messageCreate", async message => {
     }
 });
 
+
+// رابط بوت التقديم (بوت مستقل على استضافة ثانية): BOT_APPLY_URL أو APPLY_BOT_ID
+function botApplyUrl() {
+    if (CONFIG.APPLY_BOT_URL) return CONFIG.APPLY_BOT_URL;
+    return CONFIG.APPLY_BOT_ID ? "https://discord.com/users/" + CONFIG.APPLY_BOT_ID : "";
+}
+
 // نسخ discord.js الجديدة غيّرت اسم الحدث من ready إلى clientReady، فنسمع للاثنين (وفحص كل 5 ثواني احتياط) عشان البوت يتعرّف عليه الموقع
 let botReadyDone = false;
 async function onBotReady() {
@@ -2000,6 +2013,9 @@ function validateAccountFields(b, opts = {}) {
 }
 
 app.post("/auth/register", async (req, res) => {
+    return res.status(410).json({ error: "التقديم صار من بوت ديسكورد فقط" });
+});
+app.post("/auth/register-old", async (req, res) => {
     if (!authRateLimit("reg:" + clientIp(req), 8, 60 * 60 * 1000)) return res.status(429).json({ error: "محاولات كثيرة، انتظر شوي وجرب مرة ثانية" });
     const b = req.body || {};
     const v = validateAccountFields(b);
@@ -2220,6 +2236,7 @@ function accView(a, withPw, viewerUid) {
     if (a.isSenior && a.uid !== viewerUid && !ownerUids.has(viewerUid)) withPw = false;
     return {
         uid: a.uid, email: a.email, fullName: a.fullName, age: a.age, nationality: a.nationality,
+        unit: a.unit || null, discordTag: a.discordTag || null,
         status: a.status, isSenior: !!a.isSenior, isOwner: !!a.isOwner, tempSenior: !!a.tempSenior, sector: a.sector || null, isMP: !!a.isMP,
         answers: a.answers || {}, rejectReason: a.rejectReason || null,
         reviewedByTag: a.reviewedByTag || null, reviewedAt: a.reviewedAt || null, createdAt: a.createdAt,
@@ -2230,12 +2247,13 @@ function accView(a, withPw, viewerUid) {
 async function approveAccount(a, actor) {
     a.status = "approved"; a.rejectReason = null;
     a.reviewedBy = actor.id; a.reviewedByTag = actor.username; a.reviewedAt = new Date();
+    if (a.discordUser) a.dmStatus = "pending";
     await a.save();
     const settings = await getSettings();
     await Personnel.findOneAndUpdate(
         { discord: a.uid },
         {
-            $set: { registeredName: a.fullName, discordTag: a.fullName, sector: a.sector || null },
+            $set: { registeredName: a.fullName, discordTag: a.fullName, sector: a.sector || null, ...(a.unit ? { unit: a.unit } : {}) },
             $setOnInsert: {
                 unit: a.sector ? (CONFIG.SECTORS[a.sector] || "غير محدد") : "غير محدد",
                 leaveBalance: settings.leaveBalanceDefault ?? CONFIG.DEFAULT_LEAVE_BALANCE,
@@ -2250,6 +2268,7 @@ async function approveAccount(a, actor) {
 async function rejectAccount(a, actor, reason) {
     a.status = "rejected"; a.rejectReason = reason || null;
     a.reviewedBy = actor.id; a.reviewedByTag = actor.username; a.reviewedAt = new Date();
+    if (a.discordUser) a.dmStatus = "pending";
     await a.save();
 }
 
@@ -2526,64 +2545,6 @@ app.post("/api/profile/setup", ensureAuth, async (req, res) => {
     );
     res.json({ ok: true, registeredName: p.registeredName, unit: p.unit });
 });
-
-app.get("/api/violations/meta", ensureAuth, async (req, res) => {
-    const vehicles = await Vehicle.find().sort({ name: 1 });
-    res.json({ types: CONFIG.VIOLATION_TYPES, vehicles: vehicles.map(v => ({ name: v.name, photo: v.photo })) });
-});
-
-const VIOLATION_COOLDOWN_MS = 5 * 1000;
-const violationLocks = new Set();
-
-app.post("/api/violations/submit", ensureAuth, async (req, res) => {
-    if (violationLocks.has(req.user.id)) {
-        return res.status(429).json({ error: "في مخالفة قيد الإرسال حالياً على حسابك، انتظر لحظة." });
-    }
-    violationLocks.add(req.user.id);
-    try {
-        const settings = await getSettings();
-        if (settings.disableViolations) return res.status(403).json({ error: "تسجيل المخالفات مغلق حالياً" });
-        if (!(isSeniorAdmin(req.user.id) || isSectorOfficial(req.user.id, settings))) return res.status(403).json({ error: "تسجيل المخالفات لمسؤولي القطاعات فقط" });
-        const p = await Personnel.findOne({ discord: req.user.id });
-        if (!p || !p.registeredName || !p.unit) return res.status(400).json({ error: "أكمل بياناتك (الاسم واليونت) أولاً" });
-        if (p.isBlocked) return res.status(403).json({ error: "أنت موقوف عن تسجيل مخالفات جديدة" });
-        if (isSummonBlocking(p)) return res.status(403).json({ error: "🚨 عليك استدعاء نشط من الشؤون العسكرية، لازم تدخل الاستدعاء أولاً قبل أي إجراء بالموقع" });
-
-        const pendingCount = await Violation.countDocuments({ reporterDiscord: req.user.id, status: "pending" });
-        if (pendingCount >= CONFIG.MAX_PENDING_ITEMS) {
-            return res.status(429).json({ error: `عندك ${CONFIG.MAX_PENDING_ITEMS} مخالفات/تقارير معلّقة بانتظار المراجعة، لازم الإدارة تقبل أو ترفض وحدة منها قبل تسجيل مخالفة جديدة.` });
-        }
-
-        const last = await Violation.findOne({ reporterDiscord: req.user.id }).sort({ createdAt: -1 });
-        if (last) {
-            const elapsed = Date.now() - last.createdAt.getTime();
-            if (elapsed < VIOLATION_COOLDOWN_MS) {
-                const wait = Math.ceil((VIOLATION_COOLDOWN_MS - elapsed) / 1000);
-                return res.status(429).json({ error: `لازم تنتظر ${wait} ثانية قبل تسجيل مخالفة جديدة`, cooldown: wait });
-            }
-        }
-
-        const { violationType, vehicle, photo } = req.body;
-        if (!violationType || !vehicle) return res.status(400).json({ error: "أكمل نوع المخالفة والمركبة" });
-        if (!photo) return res.status(400).json({ error: "لازم ترفق صورة المخالفة" });
-        if (photo && photo.length > CONFIG.MAX_PHOTO_MB * 1024 * 1024 * 1.4) {
-            return res.status(400).json({ error: `الصورة أكبر من ${CONFIG.MAX_PHOTO_MB}MB` });
-        }
-        const vehicleDoc = await Vehicle.findOne({ name: vehicle });
-
-        const v = await Violation.create({
-            reporterDiscord: req.user.id, reporterTag: req.user.username,
-            reporterName: p.registeredName, reporterUnit: p.unit,
-            violationType, vehicle, vehiclePhoto: vehicleDoc?.photo || null,
-            plateNumber: generatePlate(), status: "pending",
-        });
-        await postViolationToChannel(v, photo);
-        res.json({ ok: true, violation: v });
-    } finally {
-        violationLocks.delete(req.user.id);
-    }
-});
-
 
 // ============================================================
 //  🪖 المخالفات العسكرية: مسؤول القطاع / الشؤون العسكرية يسجّل مخالفة (كتابة) على عسكري،
@@ -10701,6 +10662,7 @@ app.get("/", (req, res) => {
 <script>
 const MILITARY_RANKS = ${JSON.stringify(CONFIG.MILITARY_RANKS)};
 const SECTOR_LABELS = ${JSON.stringify(CONFIG.SECTORS)};
+var BOT_APPLY_URL = ${JSON.stringify(botApplyUrl())};
 let ME = null;
 var REAL_OWNER = false, OWNER_DISGUISE = false;
 try { OWNER_DISGUISE = sessionStorage.getItem('flOd') === '1'; } catch (e) {}
@@ -13872,7 +13834,7 @@ function navRestore() {
     try {
         var o = JSON.parse(localStorage.getItem('nav_last') || 'null');
         if (o && ME && o.u === ME.discordId && o.f && o.f !== 'renderDashboard()' && NAV_FNS.indexOf(o.f) > -1) {
-            if ((o.f === 'renderNewViolation()' || o.f === 'renderMilViolation()') && ME.attRequired && !(ME.att && ME.att.status === 'in')) return false;
+            if (o.f === 'renderMilViolation()' && ME.attRequired && !(ME.att && ME.att.status === 'in')) return false;
             (new Function(o.f))();
             if (document.querySelector('#app .auth-page')) return false;
             return true;
@@ -13890,9 +13852,8 @@ function buildNav() {
     if (ME.isMilitaryPolice && !ME.isSeniorAdmin) {
         items.push({ label: '📝 تسجيل تقرير (شؤون عسكرية)', fn: "openMPReportForm('renderDashboard()')" });
     }
-    if (ME.canViolation) items.push({ label: '📝 تسجيل مخالفة', fn: 'renderNewViolation()' });
-    if (ME.canMilViolation) items.push({ label: '🪖 تسجيل مخالفة عسكرية', fn: 'renderMilViolation()' });
-    if (ME.milViolReviewer) items.push({ label: '⚖️ مراجعة المخالفات العسكرية', fn: 'renderMilViolPanel()' });
+    if (ME.canMilViolation) items.push({ label: '📝 تسجيل مخالفة', fn: 'renderMilViolation()' });
+    if (ME.milViolReviewer && !ME.isSeniorAdmin) items.push({ label: '⚖️ مراجعة المخالفات العسكرية', fn: 'renderMilViolPanel()' });
     items.push(
         { label: '📋 مخالفاتي', fn: 'renderMinePage()' },
         { label: '🌴 الإجازات', fn: 'renderLeavePage()' },
@@ -14305,7 +14266,7 @@ function renderLogin(forceForm) {
         '<a class="auth-forgot" onclick="authForgot()">هل نسيت كلمة المرور ؟</a>' +
         '<button class="auth-btn" id="lg-btn" onclick="doLogin()">تسجيل الدخول</button>' +
         '<div class="auth-sep"></div>' +
-        '<a class="auth-link" onclick="renderRegister()">ليس لديك حساب؟ سجل الآن!</a>'
+        '<button class="auth-btn" style="background:#334155;" onclick="openApplyBot()">ماعندك حساب؟ سجّل الآن</button>'
     );
     const enter = function (e) { if (e.key === 'Enter') doLogin(); };
     document.getElementById('lg-email').onkeydown = enter;
@@ -14330,44 +14291,11 @@ async function doLogin() {
         offerSaveLogin(email, pw);
     } catch (e) { authErr(e.message); }
 }
-function renderRegister() {
-    authShell(
-        '<h1 class="auth-title">سيرفر ليجون RP</h1>' +
-        '<div class="auth-sub">تسجيل حساب جديد</div>' +
-        '<div id="auth-err" class="auth-err"></div>' +
-        '<div class="auth-grid">' +
-            authField('الاسم الرباعي :', 'rg-name', 'text', 'الاسم كاملاً', '') +
-            authField('العمر :', 'rg-age', 'number', '00', '') +
-            authField('البريد الإلكتروني :', 'rg-email', 'email', 'example@email.com', 'ltr') +
-            authField('الجنسية :', 'rg-nat', 'text', 'سعودي', '') +
-        '</div>' +
-        '<div><label class="auth-label">كلمة المرور :</label><div class="pw-wrap"><input id="rg-pw" class="auth-input" type="password" placeholder="••••••••" dir="ltr" autocomplete="off"><button type="button" class="pw-eye" data-t="rg-pw" onclick="togglePwEye(this.dataset.t, this)">👁</button></div><span class="auth-req">* حقل إجباري</span></div>' +
-        '<div class="auth-sep" style="margin:6px 0 20px;"></div>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-avail"><span>هل أنت متفرغ للعمل في سيرفر ليجون RP ؟</span></label>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-capable"><span>هل لديك القدرة علي المشاركة الصوتية والتصوير وتحمل ضغوط العمل ؟</span></label>' +
-        '<label class="auth-check"><input type="checkbox" id="rg-terms"><span>الموافقة علي القوانين والشروط وسياسة سيرفر ليجون RP</span></label>' +
-        '<button class="auth-btn" onclick="doRegister()">إنشاء الحساب</button>' +
-        '<div class="auth-sep" style="margin:22px 0 18px;"></div>' +
-        '<a class="auth-link" onclick="renderLogin()">لديك حساب؟ سجل دخولك</a>'
-    );
+function openApplyBot() {
+    if (BOT_APPLY_URL) window.open(BOT_APPLY_URL, '_blank');
+    else toast('رابط بوت التقديم غير مضبوط');
 }
-async function doRegister() {
-    const v = function (id) { return document.getElementById(id).value.trim(); };
-    const body = {
-        fullName: v('rg-name'), age: v('rg-age'), email: v('rg-email'), nationality: v('rg-nat'),
-        password: document.getElementById('rg-pw').value,
-        available: document.getElementById('rg-avail').checked,
-        capable: document.getElementById('rg-capable').checked,
-        terms: document.getElementById('rg-terms').checked,
-    };
-    if (!body.fullName || !body.age || !body.email || !body.nationality || !body.password) return authErr('عبّي كل الحقول الإجبارية');
-    if (!body.terms) return authErr('لازم توافق على القوانين والشروط وسياسة السيرفر');
-    authErr('');
-    try {
-        await api('/auth/register', { method: 'POST', body: JSON.stringify(body) });
-        renderRegisterDone();
-    } catch (e) { authErr(e.message); }
-}
+function renderRegister() { renderLogin(true); openApplyBot(); }
 function renderRegisterDone() {
     authShell(
         '<div class="auth-done"><div class="ico">✅</div>' +
@@ -14433,8 +14361,7 @@ function renderDashboard() {
                 <div class="row" style="gap:8px;">
                     <button class="btn sm" onclick="renderCard()">بطاقتي</button>
                     \${/* ملاحظة: هنا التردد — تم حذف الزر فقط والكود باقي. لإرجاع الزر استبدل '' بـ flFreqBtnHtml() */ ''}
-                    \${(!ME.violationsDisabled && ME.canViolation) ? '<button class="btn sm" onclick="renderNewViolation()">+ تسجيل مخالفة جديدة</button>' : ''}
-                    \${ME.canMilViolation ? '<button class="btn sm" onclick="renderMilViolation()">🪖 تسجيل مخالفة عسكرية</button>' : ''}
+                    \${ME.canMilViolation ? '<button class="btn sm" onclick="renderMilViolation()">+ تسجيل مخالفة جديدة</button>' : ''}
                     \${flAfterBtnsHtml()}
                 </div>
             </div>
@@ -14471,94 +14398,6 @@ async function loadMine(silent) {
         if (box) box.innerHTML = \`<p style="color:#f87171;">تعذر تحميل مخالفاتي، حاول تحدّث الصفحة. (\${e.message})</p>\`;
     }
 }
-let vtypeSelected = [];
-async function renderNewViolation() {
-    if (!attOk()) return;
-    const meta = await api('/api/violations/meta');
-    META = meta; selectedVehicle = null; photoBase64 = null; vtypeSelected = [];
-    document.getElementById('app').innerHTML = \`
-        <div class="card">
-            <h2>تسجيل مخالفة جديدة</h2>
-            <label>نوع المخالفة</label>
-            <div class="row" style="gap:10px;align-items:center;margin-bottom:12px;">
-                <button class="btn sm" type="button" onclick="openVTypeOverlay()">➕ اختيار نوع المخالفة</button>
-                <span id="vtype-summary" style="color:var(--muted);font-size:13px;">لم يتم اختيار أي نوع بعد</span>
-            </div>
-            <label>المركبة</label>
-            \${meta.vehicles.length ? \`<div class="vgrid" id="v-grid">\${meta.vehicles.map((v,i) => \`
-                <div class="vcard" id="vcard-\${i}" onclick="pickVehicle(\${i})">
-                    \${v.photo ? \`<img src="\${v.photo}">\` : ''}
-                    <div>\${v.name}</div>
-                </div>\`).join('')}</div>\` : '<p style="color:var(--muted);margin-bottom:10px;">لا توجد مركبات مضافة</p>'}
-            <label>صورة المخالفة (إجباري)</label>
-            <input type="file" id="v-photo" accept="image/*" onchange="previewPhoto()" required>
-            <img id="v-photo-preview" style="display:none;max-width:220px;border-radius:8px;margin-bottom:10px;">
-            <div class="row" style="gap:8px;margin-top:10px;">
-                <button class="btn" id="v-submit-btn" onclick="submitViolation()">إرسال</button>
-                <button class="btn gray" onclick="renderDashboard()">رجوع</button>
-            </div>
-        </div>\`;
-    if (meta.vehicles.length) pickVehicle(0);
-}
-function openVTypeOverlay() {
-    const grid = document.getElementById('vtype-grid');
-    grid.innerHTML = META.types.map(function (t, i) {
-        const cls = vtypeSelected.indexOf(t) > -1 ? 'vtype-opt sel' : 'vtype-opt';
-        return '<div class="' + cls + '" id="vtype-opt-' + i + '" onclick="toggleVType(' + i + ')">' + t + '</div>';
-    }).join('');
-    document.getElementById('vtype-overlay').classList.add('open');
-}
-function toggleVType(i) {
-    const t = META.types[i];
-    const idx = vtypeSelected.indexOf(t);
-    const el = document.getElementById('vtype-opt-' + i);
-    if (idx > -1) { vtypeSelected.splice(idx, 1); el.classList.remove('sel'); }
-    else { vtypeSelected.push(t); el.classList.add('sel'); }
-}
-function closeVTypeOverlay() {
-    document.getElementById('vtype-overlay').classList.remove('open');
-}
-function confirmVTypeSelection() {
-    if (!vtypeSelected.length) { toast('اختر نوع مخالفة واحد على الأقل'); return; }
-    document.getElementById('vtype-summary').textContent = vtypeSelected.join('، ');
-    document.getElementById('vtype-summary').style.color = '#4ade80';
-    closeVTypeOverlay();
-}
-function pickVehicle(i) {
-    selectedVehicle = META.vehicles[i].name;
-    document.querySelectorAll('.vcard').forEach(el => el.classList.remove('sel'));
-    document.getElementById('vcard-' + i).classList.add('sel');
-}
-function previewPhoto() {
-    const f = document.getElementById('v-photo').files[0];
-    if (!f) return;
-    toast('جارِ تجهيز الصورة...');
-    exCompress(f, 1600, 0.82).then(function (d) {
-        photoBase64 = d;
-        const img = document.getElementById('v-photo-preview');
-        img.src = photoBase64; img.style.display = 'block';
-    }).catch(function (e) { toast(e.message || 'تعذر قراءة الصورة'); });
-}
-let violationSubmitting = false;
-async function submitViolation() {
-    if (violationSubmitting) return;
-    if (!vtypeSelected.length) return toast('اختر نوع مخالفة واحد على الأقل');
-    const violationType = vtypeSelected.join('، ');
-    if (!selectedVehicle) return toast('اختر المركبة');
-    if (!photoBase64) return toast('لازم ترفق صورة المخالفة');
-    const btn = document.getElementById('v-submit-btn');
-    violationSubmitting = true;
-    if (btn) { btn.disabled = true; btn.textContent = 'جارِ الإرسال...'; }
-    try {
-        await api('/api/violations/submit', { method: 'POST', body: JSON.stringify({ violationType, vehicle: selectedVehicle, photo: photoBase64 }) });
-        toast('تم الإرسال، بانتظار قبول الإدارة'); renderDashboard();
-    } catch (e) {
-        toast(e.message);
-        if (btn) { btn.disabled = false; btn.textContent = 'إرسال'; }
-    } finally {
-        violationSubmitting = false;
-    }
-}
 function renderCard() {
     document.getElementById('app').innerHTML = '<div style="margin-top:30px;">' +
         cardBlock(ME, { id: 'me-card', hasProgress: true, nextRank: ME.nextRank, remaining: ME.pointsRemaining }) +
@@ -14569,7 +14408,7 @@ function renderAdmin(startTab) {
     if (!ME.isSeniorAdmin && (startTab === 'pending' || !startTab)) startTab = 'regs';
     const tabsHtml = ME.isSeniorAdmin ? \`
         <div class="tabs">
-            <div class="tab active" onclick="adminTab('pending', this)">المخالفات المعلّقة</div>
+            <div class="tab active" onclick="adminTab('pending', this)">مخالفات عسكرية معلّقة</div>
             <div class="tab" onclick="adminTab('reviewed', this)">✅ المخالفات المقبولة</div>
             <div class="tab" onclick="adminTab('sectors', this)">قادة القطاعات</div>
             <div class="tab" onclick="adminTab('regs', this)">📥 طلبات التسجيل</div>
@@ -15088,59 +14927,19 @@ async function loadPending() {
     const box = document.getElementById('admin-content');
     if (!box) return;
     if (!box.dataset.loaded) box.innerHTML = '<div class="card">جارِ التحميل...</div>';
-    let list;
+    let r;
     try {
-        ({ list } = await api('/api/admin/pending'));
+        r = await api('/api/milviol/review-list');
     } catch (e) {
         if (currentAdminTab !== 'pending') return;
-        box.innerHTML = \`<div class="card" style="color:#f87171;">تعذر تحميل المخالفات المعلّقة، حاول تحدّث الصفحة. (\${e.message})</div>\`;
+        box.innerHTML = "<div class='card' style='color:#f87171;'>تعذر تحميل المخالفات العسكرية المعلّقة (" + cyEsc(e.message) + ")</div>";
         return;
     }
     if (currentAdminTab !== 'pending') return;
-    box.id = 'admin-content'; box.dataset.loaded = '1';
-    box.innerHTML = '<div id="pending-box"></div>';
-    const pbox = document.getElementById('pending-box');
-    if (list.length === 0) { pbox.innerHTML = '<div class="card center" style="color:var(--muted);">لا توجد مخالفات معلّقة</div>'; return; }
-    pbox.innerHTML = list.map(v => v.kind === 'report' ? \`
-        <div class="card">
-            <div class="row" style="align-items:flex-start;">
-                <div class="row" style="gap:10px;align-items:flex-start;">
-                    \${v.hasPhoto ? \`<img class="vthumb" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2286%22 height=%2266%22><rect width=%2286%22 height=%2266%22 rx=%228%22 fill=%22%230d1f3c%22/><text x=%2243%22 y=%2244%22 font-size=%2228%22 text-anchor=%22middle%22>📷</text></svg>'" src="/api/violations/\${v._id}/thumb" onclick="viewViolationPhoto('\${v._id}')">\` : ''}
-                    <div>
-                        <b>\${v.reporterName}</b> <span style="color:var(--muted);font-size:12px;">(\${v.reporterUnit})</span>
-                        <div style="color:var(--gold-soft);margin-top:4px;">🧪 تقرير مكافحة المخدرات — \${v.reportCategory}</div>
-                        <div style="color:var(--muted);font-size:13px;">المتهم: \${v.suspectName} • موقع الضبط: \${v.arrestLocation}</div>
-                        <div style="color:var(--muted);font-size:13px;">المركبة: \${v.vehicle} • سبب الاستيقاف: \${v.stopReason}</div>
-                        \${v.reportCategory === 'مخدرات' ? \`
-                        <div style="color:var(--muted);font-size:13px;">نوع المخدر: \${v.drugType || '-'} • الكمية: \${v.drugQuantity || '-'}</div>
-                        <div style="color:var(--muted);font-size:13px;">طريقة الإخفاء: \${v.concealMethod || '-'}</div>
-                        \` : \`<div style="color:var(--muted);font-size:13px;">المضبوطات: \${v.seizedItems}</div>\`}
-                        \${v.securityActions && v.securityActions.length ? \`<div style="color:var(--muted);font-size:13px;">الإجراءات: \${v.securityActions.join('، ')}</div>\` : ''}
-                    </div>
-                </div>
-                <div class="row" style="gap:8px;">
-                    <button class="btn sm" onclick="approveV('\${v._id}')">قبول (+2)</button>
-                    <button class="btn danger sm" onclick="rejectV('\${v._id}')">رفض (-1)</button>
-                </div>
-            </div>
-        </div>\` : \`
-        <div class="card">
-            <div class="row">
-                <div class="row" style="gap:10px;">
-                    \${v.hasPhoto ? \`<img class="vthumb" loading="lazy" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2286%22 height=%2266%22><rect width=%2286%22 height=%2266%22 rx=%228%22 fill=%22%230d1f3c%22/><text x=%2243%22 y=%2244%22 font-size=%2228%22 text-anchor=%22middle%22>📷</text></svg>'" src="/api/violations/\${v._id}/thumb" onclick="viewViolationPhoto('\${v._id}')">\` : ''}
-                    <div>
-                        <b>\${v.reporterName}</b> <span style="color:var(--muted);font-size:12px;">(\${v.reporterUnit})</span>
-                        <div style="color:var(--gold-soft);margin-top:4px;">\${v.violationType}</div>
-                        <div style="color:var(--muted);font-size:13px;">المركبة: \${v.vehicle} • اللوحة: \${v.plateNumber}</div>
-                    </div>
-                </div>
-                <div class="row" style="gap:8px;">
-                    <button class="btn sm" onclick="approveV('\${v._id}')">قبول</button>
-                    <button class="btn danger sm" onclick="rejectV('\${v._id}')">رفض</button>
-                </div>
-            </div>
-        </div>\`).join('');
+    box.dataset.loaded = '1';
+    box.innerHTML = "<div id='pending-box'>" + mvpHtml(r) + "</div>";
 }
+
 const actionLocks = {};
 function isActionLocked(id) {
     const until = actionLocks[id];
@@ -17110,7 +16909,7 @@ async function loadRegs() {
     box.innerHTML = list.map(function (a) {
         return '<div class="card acc-card">' +
             '<div class="acc-title">' + accEsc(a.fullName) + '</div>' +
-            accRow('العمر', a.age) + accRow('الجنسية', a.nationality) + accRow('البريد', a.email) + accPwRow(a.password) +
+            (a.unit ? accRow('اليونت', a.unit) : '') + (a.discordTag ? accRow('يوزر ديسكورد', a.discordTag) : '') + (a.unit ? '' : accRow('العمر', a.age) + accRow('الجنسية', a.nationality)) + accRow('البريد', a.email) + accPwRow(a.password) +
             accRow('متفرغ للعمل؟', accYN(a.answers && a.answers.available)) +
             accRow('قادر على المشاركة الصوتية والتصوير وتحمل الضغط؟', accYN(a.answers && a.answers.capable)) +
             accRow('تاريخ الطلب', new Date(a.createdAt).toLocaleString('ar')) +
@@ -20884,7 +20683,7 @@ async function renderMilViolation() {
         MV.people = r.list || []; MV.sel = null;
     } catch (e) { toast(e.message); return renderDashboard(); }
     app.innerHTML =
-        "<div class='card'><div class='row'><h2>🪖 تسجيل مخالفة عسكرية</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع</button></div>" +
+        "<div class='card'><div class='row'><h2>📝 تسجيل مخالفة</h2><button class='btn gray sm' onclick='renderDashboard()'>رجوع</button></div>" +
         "<label>العسكري المخالف (من فريق أول إلى جندي)</label>" +
         "<input id='mv-search' placeholder='🔍 ابحث بالاسم أو الرتبة أو رقم البطاقة...' oninput='mvFilter(this.value)'>" +
         "<div id='mv-sel' style='margin:8px 0;color:var(--muted);font-size:13px;'>لم تختر أحد بعد</div>" +
@@ -20960,15 +20759,17 @@ function mvpCard(v, actions) {
         (v.reviewedByName ? "<div style='font-size:12px;color:var(--muted);margin-top:4px;'>راجعها: " + cyEsc(v.reviewedByName) + "</div>" : '') +
         (actions ? "<div class='row' style='gap:8px;margin-top:8px;justify-content:flex-start;'><button class='btn sm' data-id='" + v._id + "' onclick='mvDecide(this.dataset.id, true)'>✅ قبول</button><button class='btn danger sm' data-id='" + v._id + "' onclick='mvDecide(this.dataset.id, false)'>❌ رفض</button></div>" : '') + "</div>";
 }
+function mvpHtml(r) {
+    return "<div class='card'><h3>بانتظار المراجعة (" + r.pending.length + ")</h3>" +
+        (r.pending.length ? r.pending.map(function (v) { return mvpCard(v, true); }).join('') : "<p style='color:var(--muted);'>ما فيه مخالفات معلّقة 👌</p>") + "</div>" +
+        "<div class='card'><h3>آخر القرارات</h3>" +
+        (r.recent.length ? r.recent.map(function (v) { return mvpCard(v, false); }).join('') : "<p style='color:var(--muted);'>لا يوجد</p>") + "</div>";
+}
 async function mvpLoad() {
     var box = document.getElementById('mvp-box');
     if (!box) return;
     try {
-        var r = await api('/api/milviol/review-list');
-        box.innerHTML = "<div class='card'><h3>بانتظار المراجعة (" + r.pending.length + ")</h3>" +
-            (r.pending.length ? r.pending.map(function (v) { return mvpCard(v, true); }).join('') : "<p style='color:var(--muted);'>ما فيه مخالفات معلّقة 👌</p>") + "</div>" +
-            "<div class='card'><h3>آخر القرارات</h3>" +
-            (r.recent.length ? r.recent.map(function (v) { return mvpCard(v, false); }).join('') : "<p style='color:var(--muted);'>لا يوجد</p>") + "</div>";
+        box.innerHTML = mvpHtml(await api('/api/milviol/review-list'));
     } catch (e) { box.innerHTML = "<div class='card' style='color:#f87171;'>" + cyEsc(e.message) + "</div>"; }
 }
 async function mvDecide(id, ok) {
@@ -20983,7 +20784,7 @@ async function mvDecide(id, ok) {
     try {
         await api('/api/milviol/' + id + (ok ? '/approve' : '/reject'), { method: 'POST', body: JSON.stringify(body) });
         toast(ok ? '✅ انقبلت وانسجلت في ملفه' : '❌ انرفضت');
-        mvpLoad();
+        if (document.getElementById('mvp-box')) mvpLoad(); else loadPending();
     } catch (e) { toast(e.message); }
 }
 
