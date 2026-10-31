@@ -316,8 +316,17 @@ async function copyOldMainDb() {
     }
 }
 
+// قطاع الشؤون العسكرية = نفس قيادة نظام الشؤون العسكرية (قائد/نائب/مسؤول أفراد) — مصدر واحد
+function mirrorMpToSector(settings) {
+    const m = settings.mpLeadership || {};
+    if (!settings.sectorLeadership) settings.sectorLeadership = {};
+    const sec = settings.sectorLeadership.militaryAffairs || (settings.sectorLeadership.militaryAffairs = {});
+    for (const r of ["commander", "deputy", "personnelOfficer"]) { sec[r + "Id"] = m[r + "Id"] || null; sec[r + "Name"] = m[r + "Name"] || null; }
+    settings.markModified("sectorLeadership");
+}
 async function ensureSectorFields() {
     try {
+        try { const st0 = await getSettings(); if (st0.mpLeadership && (st0.mpLeadership.commanderId || st0.mpLeadership.deputyId || st0.mpLeadership.personnelOfficerId)) { mirrorMpToSector(st0); await st0.save(); } } catch (e) {}
         await Account.updateMany({ sector: "militaryPolice" }, { $set: { sector: "militaryAffairs" } });
         await Personnel.updateMany({ sector: "militaryPolice" }, { $set: { sector: "militaryAffairs", unit: "الشؤون العسكرية" } });
         const accs = await Account.find({ status: "approved" }, { uid: 1, sector: 1 }).lean();
@@ -4937,7 +4946,7 @@ app.post("/api/senior/mp/assign", ensureSeniorAdmin, async (req, res) => {
     const displayName = person.registeredName || person.discordTag || person.discord;
     settings.mpLeadership[role + "Id"] = person.discord;
     settings.mpLeadership[role + "Name"] = displayName;
-    settings.markModified("mpLeadership");
+    mirrorMpToSector(settings); settings.markModified("mpLeadership");
     await settings.save();
     await logEvent({
         action: "تعيين " + MP_ROLE_LABELS[role] + " الشؤون العسكرية",
@@ -4954,7 +4963,7 @@ app.post("/api/senior/mp/remove", ensureSeniorAdmin, async (req, res) => {
     const removedName = settings.mpLeadership[role + "Name"];
     settings.mpLeadership[role + "Id"] = null;
     settings.mpLeadership[role + "Name"] = null;
-    settings.markModified("mpLeadership");
+    mirrorMpToSector(settings); settings.markModified("mpLeadership");
     await settings.save();
     await logEvent({ action: "إزالة " + MP_ROLE_LABELS[role] + " الشؤون العسكرية", actorId: req.user.id, actorTag: req.user.username, details: removedName || "-" });
     res.json({ ok: true, mpLeadership: settings.mpLeadership });
@@ -4969,7 +4978,7 @@ app.post("/api/mp/personnel-officer/assign", ensureMPLeader, async (req, res) =>
     if (!settings.mpLeadership) settings.mpLeadership = {};
     settings.mpLeadership.personnelOfficerId = person.discord;
     settings.mpLeadership.personnelOfficerName = person.registeredName || person.discordTag || person.discord;
-    settings.markModified("mpLeadership");
+    mirrorMpToSector(settings); settings.markModified("mpLeadership");
     await settings.save();
     await logEvent({ action: "تعيين مسؤول أفراد الشؤون العسكرية", discordId: person.discord, discordTag: person.discordTag, actorId: req.user.id, actorTag: req.user.username, details: settings.mpLeadership.personnelOfficerName });
     res.json({ ok: true, mpLeadership: settings.mpLeadership });
@@ -4980,7 +4989,7 @@ app.post("/api/mp/personnel-officer/remove", ensureMPLeader, async (req, res) =>
     const removedName = settings.mpLeadership.personnelOfficerName;
     settings.mpLeadership.personnelOfficerId = null;
     settings.mpLeadership.personnelOfficerName = null;
-    settings.markModified("mpLeadership");
+    mirrorMpToSector(settings); settings.markModified("mpLeadership");
     await settings.save();
     await logEvent({ action: "إزالة مسؤول أفراد الشؤون العسكرية", actorId: req.user.id, actorTag: req.user.username, details: removedName || "-" });
     res.json({ ok: true, mpLeadership: settings.mpLeadership });
@@ -13361,7 +13370,7 @@ function updateStealthBtn(on) {
 var CC_TIMER = null;
 
 /* ⚡ أوامر فلاش (المالك): فتح لوحات القيادة كقائد/نائب بصمت تام — ما ينسجل شي وما يظهر اسمك */
-var FL_SEC_KEYS = ['lsbd', 'ssf', 'militaryAffairs'];
+var FL_SEC_KEYS = ['lsbd', 'ssf'];
 var FL_SEC_LABELS = { lsbd: 'LSBD', ssf: 'SSF', militaryAffairs: 'الشؤون العسكرية' };
 function flCmdBack(fn, label) { return '<div style="margin-bottom:8px;"><button class="btn sm gray" onclick="' + fn + '">' + label + '</button></div>'; }
 function flCmdOpen() {
@@ -14993,7 +15002,7 @@ async function loadSectors() {
 function renderSectorsBox() {
     const box = document.getElementById('admin-content');
     if (!box) return;
-    const keys = Object.keys(sectorsCache.sectors);
+    const keys = Object.keys(sectorsCache.sectors).filter(function (k) { return k !== 'militaryAffairs'; });
     const mp = sectorsCache.mpLeadership || {};
     const vos = sectorsCache.violationsOfficers || [];
     const voCard = '<div class=\"card\">' +
