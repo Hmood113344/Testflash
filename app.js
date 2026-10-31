@@ -2077,7 +2077,14 @@ app.post("/auth/login", async (req, res, next) => {
         res.json({ ok: true });
     });
 });
-app.get("/auth/logout", (req, res) => { req.logout(() => res.redirect("/")); });
+app.get("/auth/logout", (req, res, next) => {
+    const backUid = req.session && req.session.ownerBackUid;
+    if (backUid && isOwnerUid(backUid)) {
+        req.session.ownerBackUid = null;
+        return req.logIn({ id: backUid }, (err) => { if (err) return next(err); res.redirect("/"); });
+    }
+    req.logout(() => res.redirect("/"));
+});
 
 // 🕵️ دخول كعضو (للمالك فقط): يدخل بحساب أي عضو من غير ما يسجّل أي أثر (لا لوق ولا إشعار ولا جلسة جهاز تظهر للكبار)
 app.post("/api/owner/login-as/:uid", ensureAuth, async (req, res, next) => {
