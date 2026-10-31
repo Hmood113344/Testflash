@@ -10711,7 +10711,9 @@ app.get("/", (req, res) => {
         <div id="owner-modal-body"></div>
     </div>
 </div>
-<button id="owner-back-btn" style="position:fixed;bottom:16px;left:16px;z-index:4600;display:none;width:40px;height:40px;border-radius:50%;background:#1f2937;color:#fff;border:1px solid #374151;font-size:16px;" onclick="ownerLoginBack()" title="رجوع">↩️</button>
+<div id="owner-back-btn" style="position:fixed;bottom:92px;left:16px;z-index:4600;display:none;">
+    <button class="btn sm" style="background:#1f2937;" onclick="ownerLoginBack()">↩️ رجوع لحساب المالك</button>
+</div>
 <div id="owner-toolbar" style="position:fixed;bottom:92px;left:16px;z-index:4500;display:none;flex-direction:column;gap:8px;">
     <button class="btn sm" style="background:#0e7490;" onclick="offaOpenCommandCenter()">🖥️ غرفة التحكم</button>
     <button class="btn sm" style="background:#be123c;" onclick="offaOpenLive()">📡 العمليات الحية</button>
@@ -13918,7 +13920,7 @@ async function init() {
         api('/api/owner/stealth', { noLock: true }).then(function (d) { updateStealthBtn(d.on); }).catch(function () {});
     }
     if (ME.ownerImpersonating) {
-        var obb = document.getElementById('owner-back-btn'); if (obb) obb.style.display = 'block';
+        var obb = document.getElementById('owner-back-btn'); if (obb) obb.style.display = 'flex';
     }
     lastKnownRank = ME.rank;
     buildNav();
