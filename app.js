@@ -2649,6 +2649,10 @@ app.post("/api/milviol/submit", ensureAuth, async (req, res) => {
     await logEvent({ action: "تسجيل مخالفة عسكرية", discordId: targetDiscord, discordTag: target.discordTag, actorId: req.user.id, actorTag: req.user.username, details: `على ${target.registeredName}: ${t.slice(0, 200)} — بانتظار المراجعة` });
     res.json({ ok: true, id: doc._id });
 });
+app.get("/api/milviol/on-me", ensureAuth, async (req, res) => {
+    const list = await MilViolation.find({ targetDiscord: req.user.id, status: "approved" }, { text: 1, reporterName: 1, reporterRank: 1, reviewedAt: 1, createdAt: 1 }).sort({ createdAt: -1 }).limit(100).lean();
+    res.json({ list });
+});
 app.get("/api/milviol/mine", ensureAuth, async (req, res) => {
     const list = await MilViolation.find({ reporterDiscord: req.user.id }).sort({ createdAt: -1 }).limit(50).lean();
     res.json({ list });
@@ -14444,12 +14448,13 @@ async function loadMine(silent) {
     try {
         const { list } = await api('/api/violations/mine');
         let mvList = [];
-        try { mvList = (await api('/api/milviol/mine')).list || []; } catch (e2) {}
+        try { mvList = (await api('/api/milviol/on-me')).list || []; } catch (e2) {}
         const cEl = document.getElementById('mine-count');
         if (cEl) cEl.textContent = list.length + mvList.length;
         if (!box) return;
-        const mvHtml = mvList.length ? ('<div style="margin-top:12px;font-size:13px;color:var(--gold-soft);">🪖 مخالفاتي العسكرية</div>' + mvList.map(function (m) {
-            return '<div style="background:rgba(5,15,10,0.6);padding:8px;border-radius:8px;margin-top:6px;font-size:13px;"><div class="row"><b>' + cyEsc(m.targetName) + ' <span style="color:var(--muted);font-size:12px;">(' + cyEsc(m.targetRank || '-') + ')</span></b>' + mvStatusBadge(m.status) + '</div><div style="margin-top:4px;">' + cyEsc(m.text) + '</div>' + (m.status === 'rejected' && m.rejectReason ? '<div style="font-size:11px;color:var(--muted);margin-top:3px;">' + cyEsc(m.rejectReason) + '</div>' : '') + '</div>';
+        const mvHtml = mvList.length ? ('<div style="margin-top:12px;font-size:13px;color:var(--gold-soft);">🪖 مخالفات عسكرية عليك</div>' + mvList.map(function (m) {
+            var d = ''; try { d = new Date(m.reviewedAt || m.createdAt).toLocaleDateString('ar'); } catch (e3) {}
+            return '<div style="background:rgba(5,15,10,0.6);padding:8px;border-radius:8px;margin-top:6px;font-size:13px;"><div>' + cyEsc(m.text) + '</div><div style="font-size:11px;color:var(--muted);margin-top:3px;">سجّلها: ' + cyEsc(m.reporterName || '-') + ' (' + cyEsc(m.reporterRank || '-') + ') • ' + d + '</div></div>';
         }).join('')) : '';
         if (list.length === 0) { box.innerHTML = (mvHtml || '<p style="color:var(--muted);">لا توجد مخالفات مسجلة بعد</p>'); return; }
         box.innerHTML = \`<table><tr><th></th><th>النوع</th><th>المركبة</th><th>اللوحة</th><th>الحالة</th></tr>\` +
